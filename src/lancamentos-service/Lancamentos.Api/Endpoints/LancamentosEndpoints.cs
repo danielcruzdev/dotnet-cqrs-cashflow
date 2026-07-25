@@ -66,8 +66,7 @@ public static class LancamentosEndpoints
         {
             StatusCriacao.Criado => TypedResults.Created($"/api/lancamentos/{corpo.Id}", corpo),
 
-            // Retry legítimo: mesma chave, mesmo conteúdo. 200 em vez de 201
-            // porque nada foi criado nesta requisição.
+            // Nada foi criado nesta requisição.
             StatusCriacao.JaRegistrado => TypedResults.Ok(corpo),
 
             StatusCriacao.ConflitoDeChave => TypedResults.Problem(

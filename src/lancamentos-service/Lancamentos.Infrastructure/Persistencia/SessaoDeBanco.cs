@@ -6,19 +6,6 @@ namespace Lancamentos.Infrastructure.Persistencia;
 /// Conexão e transação corrente, compartilhadas por todos os repositórios
 /// dentro do escopo de uma requisição.
 /// </summary>
-/// <remarks>
-/// <para>
-/// É este objeto que torna o Outbox Pattern possível. Sem ele, cada repositório
-/// abriria sua própria conexão e o <c>INSERT</c> do lançamento e o da outbox
-/// cairiam em transações diferentes — exatamente a inconsistência que o padrão
-/// existe para evitar.
-/// </para>
-/// <para>
-/// Registrado como <c>Scoped</c>: uma conexão por requisição, aberta sob demanda
-/// e devolvida ao pool no fim. Consultas fora de transação usam a mesma conexão,
-/// sem custo adicional.
-/// </para>
-/// </remarks>
 public sealed class SessaoDeBanco(NpgsqlDataSource dataSource) : IAsyncDisposable
 {
     private NpgsqlConnection? _conexao;
@@ -79,9 +66,6 @@ public sealed class SessaoDeBanco(NpgsqlDataSource dataSource) : IAsyncDisposabl
 
     public async ValueTask DisposeAsync()
     {
-        // Transação ainda aberta aqui significa que ninguém confirmou: o caminho
-        // seguro é desfazer. Na prática o IUnitOfWork já garante isso, mas o
-        // descarte é a última linha de defesa contra transação vazada.
         await DescartarTransacaoAsync();
 
         if (_conexao is not null)

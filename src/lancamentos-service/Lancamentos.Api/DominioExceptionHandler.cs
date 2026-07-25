@@ -7,14 +7,8 @@ namespace Lancamentos.Api;
 /// <summary>
 /// Traduz <see cref="DominioException"/> em <c>ProblemDetails</c> (RFC 7807).
 /// </summary>
-/// <remarks>
-/// O mapeamento usa o <see cref="DominioException.Codigo"/>, nunca a mensagem —
-/// mensagem é para humano, código é contrato com o cliente.
-/// </remarks>
 public sealed partial class DominioExceptionHandler(ILogger<DominioExceptionHandler> logger) : IExceptionHandler
 {
-    // Log gerado em tempo de compilação: sem boxing de argumentos e sem custo
-    // quando o nível está desabilitado.
     [LoggerMessage(
         EventId = 1000,
         Level = LogLevel.Information,
@@ -35,8 +29,7 @@ public sealed partial class DominioExceptionHandler(ILogger<DominioExceptionHand
 
         var status = StatusPara(dominio.Codigo);
 
-        // Violação de regra é comportamento esperado, não incidente: logar como
-        // erro poluiria o alerta de 5xx com ruído de cliente.
+        // Violação de regra é esperada, não incidente: não polui o alerta de 5xx.
         LogRegraViolada(logger, dominio.Codigo, dominio.Message);
 
         var problema = new ProblemDetails
@@ -59,8 +52,7 @@ public sealed partial class DominioExceptionHandler(ILogger<DominioExceptionHand
 
     private static int StatusPara(string codigo) => codigo switch
     {
-        // A regra é compreendida mas não pode ser satisfeita — 422 comunica
-        // isso melhor que 400 (sintaxe malformada).
+        // Requisição bem formada, regra insatisfazível.
         "lancamento.estorno_de_estorno" => StatusCodes.Status422UnprocessableEntity,
         _ => StatusCodes.Status400BadRequest,
     };

@@ -44,8 +44,7 @@ public sealed partial class OutboxPublisherBackgroundService(
                 LogCicloFalhou(logger, _falhasConsecutivas, ex);
             }
 
-            // Sem pendências ou após falha, espera. Com lote cheio, segue direto
-            // para drenar a fila de saída sem intervalo artificial.
+            // Lote cheio provavelmente tem mais pendências: não espera.
             if (publicadas < _opcoes.TamanhoLote)
             {
                 await EsperarAsync(stoppingToken);
@@ -72,8 +71,7 @@ public sealed partial class OutboxPublisherBackgroundService(
                 return 0;
             }
 
-            // O canal é obtido depois da reserva: se o broker estiver fora, a
-            // transação é desfeita e as linhas continuam pendentes, sem perda.
+            // Depois da reserva: broker fora desfaz a transação sem gastar tentativa.
             var canal = await conexao.ObterCanalAsync(ct);
 
             var publicadas = 0;
@@ -119,8 +117,6 @@ public sealed partial class OutboxPublisherBackgroundService(
 
         try
         {
-            // mandatory: true faz o broker devolver a mensagem se não houver
-            // fila ligada à routing key, em vez de descartá-la em silêncio.
             await canal.BasicPublishAsync(
                 exchange: _opcoes.Exchange,
                 routingKey: routingKey,

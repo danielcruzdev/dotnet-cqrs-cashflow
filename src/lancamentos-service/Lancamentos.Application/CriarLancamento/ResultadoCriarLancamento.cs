@@ -22,12 +22,6 @@ public enum StatusCriacao
 }
 
 /// <summary>Resultado do caso de uso de criação de lançamento.</summary>
-/// <remarks>
-/// O caso de uso devolve um <b>resultado</b> em vez de lançar exceção para os
-/// três desfechos, porque nenhum deles é excepcional: retry de cliente e reuso
-/// de chave são fluxos previstos do protocolo de idempotência. Exceção fica
-/// reservada para o que de fato não deveria acontecer.
-/// </remarks>
 public sealed record ResultadoCriarLancamento(StatusCriacao Status, Lancamento Lancamento)
 {
     public static ResultadoCriarLancamento Criado(Lancamento lancamento) =>

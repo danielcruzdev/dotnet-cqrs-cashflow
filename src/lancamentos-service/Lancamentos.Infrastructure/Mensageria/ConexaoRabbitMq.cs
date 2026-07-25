@@ -3,6 +3,9 @@ using RabbitMQ.Client;
 
 namespace Lancamentos.Infrastructure.Mensageria;
 
+/// <summary>
+/// Dona da conexão e do canal com o broker.
+/// </summary>
 public sealed class ConexaoRabbitMq(IOptions<RabbitMqOptions> opcoes) : IAsyncDisposable
 {
     private readonly RabbitMqOptions _opcoes = opcoes.Value;
@@ -41,6 +44,7 @@ public sealed class ConexaoRabbitMq(IOptions<RabbitMqOptions> opcoes) : IAsyncDi
 
             _conexao = await fabrica.CreateConnectionAsync(cancellationToken);
 
+            // Sem confirmação, "publicado" significaria apenas "enviado".
             var configuracao = new CreateChannelOptions(
                 publisherConfirmationsEnabled: true,
                 publisherConfirmationTrackingEnabled: true);

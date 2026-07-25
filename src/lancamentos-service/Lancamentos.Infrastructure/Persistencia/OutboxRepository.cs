@@ -21,11 +21,6 @@ public sealed class OutboxRepository(SessaoDeBanco sessao) : IOutboxWriter
     /// <summary>
     /// Acima disso a linha é considerada envenenada e sai do lote normal.
     /// </summary>
-    /// <remarks>
-    /// Sem esse teto, uma única mensagem impublicável (payload corrompido, tipo
-    /// desconhecido) seria retentada para sempre e travaria a ordem de tudo que
-    /// vem depois dela. É o equivalente da DLQ, do lado do produtor.
-    /// </remarks>
     public const int MaximoTentativas = 10;
 
     private static readonly JsonSerializerOptions OpcoesJson = new(JsonSerializerDefaults.Web);
@@ -42,6 +37,7 @@ public sealed class OutboxRepository(SessaoDeBanco sessao) : IOutboxWriter
                 @EventId, @AgregadoId, @ComercianteId, @DataCompetencia,
                 @TipoEvento, CAST(@Payload AS jsonb), @CriadoEm);
             """;
+        // CAST em vez de `::jsonb`: o `::` colide com a sintaxe de parâmetro do Dapper.
 
         var conexao = await sessao.ObterConexaoAsync(cancellationToken);
 
@@ -60,18 +56,6 @@ public sealed class OutboxRepository(SessaoDeBanco sessao) : IOutboxWriter
     /// <summary>
     /// Reserva um lote de mensagens pendentes para publicação.
     /// </summary>
-    /// <remarks>
-    /// <para>
-    /// <c>FOR UPDATE SKIP LOCKED</c> é o que permite rodar várias réplicas do
-    /// publisher sem publicar duplicado: cada uma trava um lote disjunto e as
-    /// demais simplesmente pulam as linhas já travadas, em vez de ficarem
-    /// bloqueadas esperando.
-    /// </para>
-    /// <para>
-    /// Precisa ser chamado <b>dentro de uma transação</b> — a trava de linha só
-    /// existe enquanto ela estiver aberta.
-    /// </para>
-    /// </remarks>
     public async Task<IReadOnlyList<MensagemOutbox>> ReservarPendentesAsync(
         int tamanhoLote,
         CancellationToken cancellationToken = default)

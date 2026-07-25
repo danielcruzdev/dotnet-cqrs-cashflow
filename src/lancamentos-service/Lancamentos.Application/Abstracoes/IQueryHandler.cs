@@ -3,6 +3,7 @@ namespace Lancamentos.Application.Abstracoes;
 /// <summary>Intenção de ler estado, sem efeito colateral.</summary>
 public interface IQuery<TResultado>;
 
+/// <summary>Executa uma <see cref="IQuery{TResultado}"/>.</summary>
 public interface IQueryHandler<in TQuery, TResultado>
     where TQuery : IQuery<TResultado>
 {

@@ -3,10 +3,7 @@ using Lancamentos.Api;
 using Lancamentos.Api.Endpoints;
 using Lancamentos.Infrastructure;
 
-// Formatação e parsing não podem depender da região do servidor: a mesma
-// requisição precisa ser interpretada igual em Windows pt-BR e em contêiner
-// Linux. Não conflita com InvariantGlobalization=false, que segue ligado
-// porque os dados de ICU são necessários para resolver o fuso do comerciante.
+// A mesma requisição precisa ser interpretada igual em qualquer região.
 CultureInfo.DefaultThreadCurrentCulture = CultureInfo.InvariantCulture;
 CultureInfo.DefaultThreadCurrentUICulture = CultureInfo.InvariantCulture;
 
@@ -15,15 +12,13 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddProblemDetails();
 builder.Services.AddExceptionHandler<DominioExceptionHandler>();
 
-// Validação nativa de Minimal APIs do .NET 10, sobre DataAnnotations.
-// Cobre formato; regra de negócio continua sendo do domínio.
+// Cobre formato; regra de negócio é do domínio.
 builder.Services.AddValidation();
 
 // Composition root: único ponto que conhece implementações concretas.
 builder.Services.AdicionarInfraestruturaDeLancamentos(builder.Configuration);
 
-// Falha ao subir, não na primeira requisição: valida todo o grafo de
-// dependências e detecta captive dependency (singleton segurando scoped).
+// Falha ao subir, não na primeira requisição.
 builder.Host.UseDefaultServiceProvider(opcoes =>
 {
     opcoes.ValidateOnBuild = true;

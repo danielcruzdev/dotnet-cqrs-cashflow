@@ -4,13 +4,6 @@ namespace Lancamentos.Domain.Eventos;
 /// Publicado sempre que um lançamento é registrado. É o único elo entre o
 /// serviço de Lançamentos e o de Consolidado.
 /// </summary>
-/// <remarks>
-/// Estorno <b>não</b> tem tipo de evento próprio: é um <see cref="LancamentoRealizado"/>
-/// com <see cref="Tipo"/> invertido e <see cref="EstornoDeId"/> preenchido. O
-/// consumidor não precisa de tratamento especial — a soma se corrige sozinha.
-/// Essa é a vantagem prática de modelar correção como lançamento compensatório
-/// em vez de mutação.
-/// </remarks>
 public sealed record LancamentoRealizado : EventoDeDominio
 {
     public override int Version => 1;
@@ -36,14 +29,6 @@ public sealed record LancamentoRealizado : EventoDeDominio
     /// <summary>
     /// Instante em que o lançamento foi gravado no serviço de origem.
     /// </summary>
-    /// <remarks>
-    /// Viaja dentro do evento por um motivo específico: é o que torna o lag de
-    /// consistência eventual <b>mensurável</b>. Como os dois serviços têm bancos
-    /// separados, ninguém consegue comparar por query o <c>criado_em</c> do
-    /// lançamento com o <c>atualizado_em</c> do saldo. Levando o timestamp de
-    /// origem junto, o consumidor calcula <c>now() - CriadoEm</c> no momento do
-    /// UPSERT e emite a métrica.
-    /// </remarks>
     public required DateTimeOffset CriadoEm { get; init; }
 
     public override Guid AgregadoId => LancamentoId;

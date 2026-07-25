@@ -51,9 +51,6 @@ public sealed class LancamentoRepository(SessaoDeBanco sessao) : ILancamentoRepo
         catch (PostgresException ex) when (ex.SqlState == UniqueViolation
                                            && ex.ConstraintName == "uq_lancamento_idempotencia")
         {
-            // Traduz o detalhe do banco em um conceito que a camada de aplicação
-            // entende. Sem isso, o caso de uso precisaria conhecer SqlState do
-            // PostgreSQL para tratar uma corrida de idempotência.
             throw new ChaveIdempotenciaEmUsoException(
                 lancamento.ComercianteId, lancamento.ChaveIdempotencia, ex);
         }
@@ -64,9 +61,7 @@ public sealed class LancamentoRepository(SessaoDeBanco sessao) : ILancamentoRepo
         Guid id,
         CancellationToken cancellationToken = default)
     {
-        // O comerciante entra no WHERE, não só na autorização da API. Filtrar
-        // por dono na própria consulta impede que um bug de rota vire vazamento
-        // de dado entre comerciantes.
+        // Filtra por dono na consulta, não só na autorização.
         var sql = $"""
             SELECT {ColunasSelect}
             FROM lancamentos
@@ -110,10 +105,7 @@ public sealed class LancamentoRepository(SessaoDeBanco sessao) : ILancamentoRepo
         int tamanhoPagina,
         CancellationToken cancellationToken = default)
     {
-        // Ordenação por (data_competencia, id): a data sozinha não é única e
-        // produziria paginação instável — registros do mesmo dia poderiam
-        // aparecer duas vezes ou sumir entre páginas. O id como desempate
-        // torna a ordem total e determinística.
+        // id como desempate: a data sozinha não é única e a paginação ficaria instável.
         var sql = $"""
             SELECT {ColunasSelect}
             FROM lancamentos

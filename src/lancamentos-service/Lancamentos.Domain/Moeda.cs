@@ -5,29 +5,6 @@ namespace Lancamentos.Domain;
 /// <summary>
 /// Código de moeda ISO 4217, restrito ao conjunto que o sistema realmente suporta.
 /// </summary>
-/// <remarks>
-/// <para>
-/// A lista é deliberadamente uma <b>allowlist curta</b>, não a tabela ISO 4217
-/// completa. Duas razões:
-/// </para>
-/// <list type="number">
-///   <item>
-///     Aceitar um código que o sistema não sabe tratar é uma promessa falsa. O
-///     saldo consolidado é segregado por moeda e não há conversão cambial no
-///     escopo — então "suportar" 180 moedas significaria apenas acumular saldos
-///     isolados que ninguém consegue somar.
-///   </item>
-///   <item>
-///     Todas as moedas aqui têm <b>duas casas decimais</b>. O armazenamento é
-///     <c>NUMERIC(18,2)</c>, então aceitar JPY (zero casas) ou KWD (três) criaria
-///     divergência silenciosa entre o que o cliente envia e o que é persistido.
-///   </item>
-/// </list>
-/// <para>
-/// Ampliar o suporte é uma decisão de produto que exige mexer no schema e definir
-/// política de câmbio — não é adicionar uma string nesta lista.
-/// </para>
-/// </remarks>
 public readonly record struct Moeda
 {
     /// <summary>Moedas ISO 4217 suportadas — todas com duas casas decimais.</summary>

@@ -3,12 +3,6 @@ namespace Lancamentos.Domain;
 /// <summary>
 /// Violação de uma regra de negócio do domínio.
 /// </summary>
-/// <remarks>
-/// Carrega um <see cref="Codigo"/> estável justamente para que a camada de API
-/// consiga traduzir a falha em uma resposta específica (ProblemDetails com
-/// <c>type</c> próprio) sem depender de comparação de mensagem. Mensagem é para
-/// humano; código é para máquina.
-/// </remarks>
 public sealed class DominioException(string codigo, string mensagem) : Exception(mensagem)
 {
     public string Codigo { get; } = codigo;

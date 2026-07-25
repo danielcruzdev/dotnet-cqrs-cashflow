@@ -11,9 +11,7 @@ public sealed class UnitOfWork(SessaoDeBanco sessao) : IUnitOfWork
     {
         ArgumentNullException.ThrowIfNull(operacao);
 
-        // Chamada aninhada participa da transação externa em vez de abrir uma
-        // nova. Postgres não tem transação aninhada de verdade (só SAVEPOINT), e
-        // fingir que tem produziria commits parciais silenciosos.
+        // Chamada aninhada participa da transação externa.
         if (sessao.EmTransacao)
         {
             return await operacao(cancellationToken);
@@ -29,9 +27,7 @@ public sealed class UnitOfWork(SessaoDeBanco sessao) : IUnitOfWork
         }
         catch
         {
-            // Rollback com CancellationToken.None de propósito: se o cancelamento
-            // foi justamente o motivo da falha, passar o token cancelado abortaria
-            // o próprio rollback e deixaria a transação pendurada até o timeout.
+            // None de propósito: token cancelado abortaria o próprio rollback.
             await sessao.DesfazerAsync(CancellationToken.None);
             throw;
         }

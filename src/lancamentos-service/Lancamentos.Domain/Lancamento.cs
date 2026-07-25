@@ -3,21 +3,6 @@ namespace Lancamentos.Domain;
 /// <summary>
 /// Um lançamento no livro-caixa do comerciante: um débito ou um crédito.
 /// </summary>
-/// <remarks>
-/// <para>
-/// <b>Lançamento é imutável.</b> Não existe alteração nem exclusão — nem na
-/// entidade, nem na API, nem no banco. Corrigir um erro significa registrar um
-/// lançamento contrário (<see cref="Estornar"/>), do mesmo jeito que se faz em
-/// contabilidade há alguns séculos.
-/// </para>
-/// <para>
-/// Isso não é purismo: o saldo consolidado é uma projeção construída por
-/// <i>incrementos</i> a partir de eventos. Um <c>UPDATE</c> no lançamento não
-/// geraria evento de correção e deixaria a projeção permanentemente errada, sem
-/// nenhum sinal visível. Estorno se propaga pelo mesmo caminho que já existe e
-/// preserva a trilha de auditoria.
-/// </para>
-/// </remarks>
 public sealed class Lancamento
 {
     public const int TamanhoMaximoDescricao = 500;
@@ -126,11 +111,6 @@ public sealed class Lancamento
     /// Produz o lançamento compensatório deste: mesmo valor, mesma data de
     /// competência, tipo invertido.
     /// </summary>
-    /// <remarks>
-    /// A data de competência é a <b>do lançamento original</b>, não a de hoje.
-    /// O estorno corrige o dia em que o erro foi cometido — lançá-lo no dia
-    /// corrente deixaria os dois dias errados em vez de um certo.
-    /// </remarks>
     /// <exception cref="DominioException">Se este lançamento já for um estorno.</exception>
     public Lancamento Estornar(string chaveIdempotencia, string hashPayload, IRelogio relogio)
     {
@@ -163,13 +143,6 @@ public sealed class Lancamento
     /// <summary>
     /// Reidrata a entidade a partir do estado persistido, sem revalidar.
     /// </summary>
-    /// <remarks>
-    /// As regras de negócio já foram aplicadas quando o lançamento foi criado.
-    /// Revalidar na leitura tornaria impossível carregar registros históricos
-    /// depois de uma mudança de regra — por exemplo, um lançamento legítimo de
-    /// ontem falharia a validação de "data não futura" se o relógio fosse
-    /// manipulado. Este método é de uso exclusivo da camada de persistência.
-    /// </remarks>
     public static Lancamento Reidratar(
         Guid id,
         Guid comercianteId,

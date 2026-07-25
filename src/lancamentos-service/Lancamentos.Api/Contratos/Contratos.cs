@@ -12,9 +12,7 @@ public sealed record CriarLancamentoRequest
     [AllowedValues("DEBITO", "CREDITO")]
     public string Tipo { get; init; } = string.Empty;
 
-    // Os limites são strings e, por padrão, o RangeAttribute os parseia com a
-    // cultura corrente — em pt-BR "0.01" não converte. As duas flags tornam a
-    // validação independente da região onde o serviço roda.
+    // Sem as flags, os limites seriam parseados na cultura corrente (pt-BR quebra).
     [Range(typeof(decimal), "0.01", "9999999999999999.99",
         ParseLimitsInInvariantCulture = true,
         ConvertValueInInvariantCulture = true)]
