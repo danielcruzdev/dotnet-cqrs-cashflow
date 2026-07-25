@@ -1,0 +1,7 @@
+<Solution>
+  <Project Path="Lancamentos.Api/Lancamentos.Api.csproj" />
+  <Project Path="Lancamentos.Application/Lancamentos.Application.csproj" />
+  <Project Path="Lancamentos.Domain/Lancamentos.Domain.csproj" />
+  <Project Path="Lancamentos.Infrastructure/Lancamentos.Infrastructure.csproj" />
+  <Project Path="Lancamentos.Tests/Lancamentos.Tests.csproj" />
+</Solution>

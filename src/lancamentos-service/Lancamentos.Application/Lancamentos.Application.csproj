@@ -1,0 +1,6 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\Lancamentos.Domain\Lancamentos.Domain.csproj" />
+  </ItemGroup>
+</Project>
