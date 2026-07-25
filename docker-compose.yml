@@ -70,22 +70,24 @@ services:
   # ---------------------------------------------------------------------------
   # Broker — o único ponto de contato entre os dois domínios
   #
-  # A topologia (exchange, DLX, filas, bindings) é declarada pelos próprios
-  # serviços na inicialização, de forma idempotente. Preferido a um
-  # definitions.json importado aqui porque mantém a topologia junto do
-  # código que depende dela e sobrevive a um broker recriado do zero.
+  # A topologia (exchanges, filas, bindings, DLX) é provisionada por
+  # definitions.json carregado no boot — o equivalente ao
+  # /docker-entrypoint-initdb.d/ usado nos Postgres acima.
   # ---------------------------------------------------------------------------
   rabbitmq:
     image: rabbitmq:4-management-alpine
     container_name: cashflow-rabbitmq
-    environment:
-      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-cashflow}
-      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-cashflow_dev}
+    # Sem RABBITMQ_DEFAULT_USER/PASS: quando load_definitions está ativo, a
+    # importação substitui o conjunto de usuários e o usuário padrão criado
+    # pelas variáveis de ambiente é descartado. Credenciais e permissões vivem
+    # no definitions.json — usuário cashflow, senha cashflow_dev.
     ports:
       - "${RABBITMQ_PORT:-5672}:5672"      # AMQP
       - "${RABBITMQ_UI_PORT:-15672}:15672" # console de administração
     volumes:
       - rabbitmq-data:/var/lib/rabbitmq
+      - ./infra/rabbitmq/rabbitmq.conf:/etc/rabbitmq/rabbitmq.conf:ro
+      - ./infra/rabbitmq/definitions.json:/etc/rabbitmq/definitions.json:ro
     healthcheck:
       test: ["CMD", "rabbitmq-diagnostics", "-q", "check_running"]
       interval: 10s

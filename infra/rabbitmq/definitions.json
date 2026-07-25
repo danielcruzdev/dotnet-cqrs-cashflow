@@ -1,0 +1,86 @@
+{
+  "vhosts": [
+    {
+      "name": "/"
+    }
+  ],
+  "users": [
+    {
+      "name": "cashflow",
+      "password_hash": "mj8hx1I2SNhquvxvs4S9MNpTTGAUVRCSpFzD4eiyGk+uofz4",
+      "hashing_algorithm": "rabbit_password_hashing_sha256",
+      "tags": [
+        "administrator"
+      ]
+    }
+  ],
+  "permissions": [
+    {
+      "user": "cashflow",
+      "vhost": "/",
+      "configure": ".*",
+      "write": ".*",
+      "read": ".*"
+    }
+  ],
+  "policies": [],
+  "parameters": [],
+  "global_parameters": [],
+  "topic_permissions": [],
+  "exchanges": [
+    {
+      "name": "lancamentos.events",
+      "vhost": "/",
+      "type": "topic",
+      "durable": true,
+      "auto_delete": false,
+      "internal": false,
+      "arguments": {}
+    },
+    {
+      "name": "lancamentos.events.dlx",
+      "vhost": "/",
+      "type": "topic",
+      "durable": true,
+      "auto_delete": false,
+      "internal": false,
+      "arguments": {}
+    }
+  ],
+  "queues": [
+    {
+      "name": "consolidado.lancamento-realizado",
+      "vhost": "/",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {
+        "x-dead-letter-exchange": "lancamentos.events.dlx"
+      }
+    },
+    {
+      "name": "consolidado.lancamento-realizado.dlq",
+      "vhost": "/",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {}
+    }
+  ],
+  "bindings": [
+    {
+      "source": "lancamentos.events",
+      "vhost": "/",
+      "destination": "consolidado.lancamento-realizado",
+      "destination_type": "queue",
+      "routing_key": "lancamento.#",
+      "arguments": {}
+    },
+    {
+      "source": "lancamentos.events.dlx",
+      "vhost": "/",
+      "destination": "consolidado.lancamento-realizado.dlq",
+      "destination_type": "queue",
+      "routing_key": "#",
+      "arguments": {}
+    }
+  ]
+}
