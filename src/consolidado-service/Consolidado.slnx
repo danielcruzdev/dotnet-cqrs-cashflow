@@ -1,0 +1,7 @@
+<Solution>
+  <Project Path="Consolidado.Api/Consolidado.Api.csproj" />
+  <Project Path="Consolidado.Application/Consolidado.Application.csproj" />
+  <Project Path="Consolidado.Domain/Consolidado.Domain.csproj" />
+  <Project Path="Consolidado.Infrastructure/Consolidado.Infrastructure.csproj" />
+  <Project Path="Consolidado.Tests/Consolidado.Tests.csproj" />
+</Solution>
