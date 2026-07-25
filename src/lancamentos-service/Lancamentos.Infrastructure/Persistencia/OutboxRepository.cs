@@ -12,7 +12,6 @@ public sealed record MensagemOutbox
     public Guid EventId { get; init; }
     public string TipoEvento { get; init; } = string.Empty;
     public string Payload { get; init; } = string.Empty;
-    public string RoutingKey { get; init; } = string.Empty;
     public int Tentativas { get; init; }
 }
 

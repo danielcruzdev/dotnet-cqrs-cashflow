@@ -5,6 +5,7 @@ using Lancamentos.Application.CriarLancamento;
 using Lancamentos.Application.EstornarLancamento;
 using Lancamentos.Domain;
 using Lancamentos.Domain.Abstracoes;
+using Lancamentos.Infrastructure.Mensageria;
 using Lancamentos.Infrastructure.Persistencia;
 using Lancamentos.Infrastructure.Tempo;
 using Microsoft.Extensions.Configuration;
@@ -76,6 +77,10 @@ public static class DependencyInjection
         services.AddScoped<
             IQueryHandler<ListarLancamentosQuery, PaginaDeLancamentos>,
             ListarLancamentosQueryHandler>();
+
+        services.Configure<RabbitMqOptions>(configuration.GetSection(RabbitMqOptions.Secao));
+        services.AddSingleton<ConexaoRabbitMq>();
+        services.AddHostedService<OutboxPublisherBackgroundService>();
 
         return services;
     }
