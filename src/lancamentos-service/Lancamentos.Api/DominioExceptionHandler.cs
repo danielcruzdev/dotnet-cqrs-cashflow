@@ -1,0 +1,67 @@
+using Lancamentos.Domain;
+using Microsoft.AspNetCore.Diagnostics;
+using Microsoft.AspNetCore.Mvc;
+
+namespace Lancamentos.Api;
+
+/// <summary>
+/// Traduz <see cref="DominioException"/> em <c>ProblemDetails</c> (RFC 7807).
+/// </summary>
+/// <remarks>
+/// O mapeamento usa o <see cref="DominioException.Codigo"/>, nunca a mensagem —
+/// mensagem é para humano, código é contrato com o cliente.
+/// </remarks>
+public sealed partial class DominioExceptionHandler(ILogger<DominioExceptionHandler> logger) : IExceptionHandler
+{
+    // Log gerado em tempo de compilação: sem boxing de argumentos e sem custo
+    // quando o nível está desabilitado.
+    [LoggerMessage(
+        EventId = 1000,
+        Level = LogLevel.Information,
+        Message = "Regra de negócio violada: {Codigo} — {Mensagem}")]
+    private static partial void LogRegraViolada(ILogger logger, string codigo, string mensagem);
+
+    public async ValueTask<bool> TryHandleAsync(
+        HttpContext httpContext,
+        Exception exception,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(httpContext);
+
+        if (exception is not DominioException dominio)
+        {
+            return false;
+        }
+
+        var status = StatusPara(dominio.Codigo);
+
+        // Violação de regra é comportamento esperado, não incidente: logar como
+        // erro poluiria o alerta de 5xx com ruído de cliente.
+        LogRegraViolada(logger, dominio.Codigo, dominio.Message);
+
+        var problema = new ProblemDetails
+        {
+            Type = $"https://cashflow.local/erros/{dominio.Codigo}",
+            Title = "Regra de negócio violada",
+            Status = status,
+            Detail = dominio.Message,
+            Instance = httpContext.Request.Path,
+        };
+
+        problema.Extensions["codigo"] = dominio.Codigo;
+        problema.Extensions["correlationId"] = httpContext.TraceIdentifier;
+
+        httpContext.Response.StatusCode = status;
+        await httpContext.Response.WriteAsJsonAsync(problema, cancellationToken);
+
+        return true;
+    }
+
+    private static int StatusPara(string codigo) => codigo switch
+    {
+        // A regra é compreendida mas não pode ser satisfeita — 422 comunica
+        // isso melhor que 400 (sintaxe malformada).
+        "lancamento.estorno_de_estorno" => StatusCodes.Status422UnprocessableEntity,
+        _ => StatusCodes.Status400BadRequest,
+    };
+}
