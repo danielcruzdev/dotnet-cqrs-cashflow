@@ -1,6 +1,8 @@
 using Dapper;
 using Lancamentos.Application.Abstracoes;
+using Lancamentos.Application.ConsultarLancamentos;
 using Lancamentos.Application.CriarLancamento;
+using Lancamentos.Application.EstornarLancamento;
 using Lancamentos.Domain;
 using Lancamentos.Domain.Abstracoes;
 using Lancamentos.Infrastructure.Persistencia;
@@ -62,6 +64,18 @@ public static class DependencyInjection
         services.AddScoped<
             ICommandHandler<CriarLancamentoCommand, ResultadoCriarLancamento>,
             CriarLancamentoCommandHandler>();
+
+        services.AddScoped<
+            ICommandHandler<EstornarLancamentoCommand, ResultadoEstorno>,
+            EstornarLancamentoCommandHandler>();
+
+        services.AddScoped<
+            IQueryHandler<ObterLancamentoPorIdQuery, Lancamento?>,
+            ObterLancamentoPorIdQueryHandler>();
+
+        services.AddScoped<
+            IQueryHandler<ListarLancamentosQuery, PaginaDeLancamentos>,
+            ListarLancamentosQueryHandler>();
 
         return services;
     }
