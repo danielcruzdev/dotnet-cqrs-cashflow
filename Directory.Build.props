@@ -12,7 +12,20 @@
     <LangVersion>latest</LangVersion>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
-    <InvariantGlobalization>true</InvariantGlobalization>
+
+    <!--
+      InvariantGlobalization fica DESLIGADO de propósito.
+
+      Ligá-lo reduz o tamanho da imagem e o tempo de inicialização, e foi a
+      escolha inicial. Mas o domínio depende de TimeZoneInfo para resolver
+      "hoje" no fuso America/Sao_Paulo (o dia contábil), e o mapeamento entre
+      IDs IANA e Windows vem dos dados de ICU — que o modo invariante remove.
+      Verificado por execução: com o modo ligado, IDs de fuso deixam de
+      resolver de forma portátil entre Linux e Windows.
+
+      Correção de dia no fluxo de caixa vale mais que alguns MB de imagem.
+    -->
+    <InvariantGlobalization>false</InvariantGlobalization>
   </PropertyGroup>
 
   <PropertyGroup>
