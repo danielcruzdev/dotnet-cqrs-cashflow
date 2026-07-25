@@ -1,0 +1,128 @@
+# =============================================================================
+# Ambiente local completo — Cashflow
+#
+#   docker compose up -d
+#
+# Um banco por serviço (database per service): um pico de leitura no
+# Consolidado não pode afetar a escrita em Lançamentos, e a queda de um
+# não derruba o outro. É o requisito âncora expresso na infraestrutura.
+#
+# Credenciais têm default embutido para que o ambiente suba sem nenhuma
+# configuração prévia. São valores de desenvolvimento; em produção viriam
+# de Key Vault ou Kubernetes Secrets, nunca de arquivo versionado.
+# =============================================================================
+
+name: cashflow
+
+services:
+
+  # ---------------------------------------------------------------------------
+  # Banco do serviço de Lançamentos (write model + outbox)
+  # ---------------------------------------------------------------------------
+  lancamentos-db:
+    image: postgres:17-alpine
+    container_name: cashflow-lancamentos-db
+    environment:
+      POSTGRES_DB: ${LANCAMENTOS_DB_NAME:-lancamentos_db}
+      POSTGRES_USER: ${LANCAMENTOS_DB_USER:-cashflow}
+      POSTGRES_PASSWORD: ${LANCAMENTOS_DB_PASSWORD:-cashflow_dev}
+      # Sem isso, o initdb usa a locale do host e o ordenamento de índices
+      # varia entre máquinas — fonte clássica de "funciona na minha máquina".
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=C"
+    ports:
+      - "${LANCAMENTOS_DB_PORT:-5432}:5432"
+    volumes:
+      - lancamentos-db-data:/var/lib/postgresql/data
+      # Executado apenas na primeira inicialização do volume.
+      - ./src/lancamentos-service/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${LANCAMENTOS_DB_USER:-cashflow} -d ${LANCAMENTOS_DB_NAME:-lancamentos_db}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    networks: [cashflow]
+
+  # ---------------------------------------------------------------------------
+  # Banco do serviço de Consolidado (read model)
+  # ---------------------------------------------------------------------------
+  consolidado-db:
+    image: postgres:17-alpine
+    container_name: cashflow-consolidado-db
+    environment:
+      POSTGRES_DB: ${CONSOLIDADO_DB_NAME:-consolidado_db}
+      POSTGRES_USER: ${CONSOLIDADO_DB_USER:-cashflow}
+      POSTGRES_PASSWORD: ${CONSOLIDADO_DB_PASSWORD:-cashflow_dev}
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=C"
+    ports:
+      - "${CONSOLIDADO_DB_PORT:-5433}:5432"
+    volumes:
+      - consolidado-db-data:/var/lib/postgresql/data
+      - ./src/consolidado-service/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${CONSOLIDADO_DB_USER:-cashflow} -d ${CONSOLIDADO_DB_NAME:-consolidado_db}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    networks: [cashflow]
+
+  # ---------------------------------------------------------------------------
+  # Broker — o único ponto de contato entre os dois domínios
+  #
+  # A topologia (exchange, DLX, filas, bindings) é declarada pelos próprios
+  # serviços na inicialização, de forma idempotente. Preferido a um
+  # definitions.json importado aqui porque mantém a topologia junto do
+  # código que depende dela e sobrevive a um broker recriado do zero.
+  # ---------------------------------------------------------------------------
+  rabbitmq:
+    image: rabbitmq:4-management-alpine
+    container_name: cashflow-rabbitmq
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-cashflow}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-cashflow_dev}
+    ports:
+      - "${RABBITMQ_PORT:-5672}:5672"      # AMQP
+      - "${RABBITMQ_UI_PORT:-15672}:15672" # console de administração
+    volumes:
+      - rabbitmq-data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "check_running"]
+      interval: 10s
+      timeout: 10s
+      retries: 10
+      start_period: 30s
+    networks: [cashflow]
+
+  # ---------------------------------------------------------------------------
+  # Cache do Consolidado
+  #
+  # Com 50 req/s o banco daria conta sozinho. O cache está aqui para proteger
+  # a latência de cauda e manter o serviço dentro do orçamento de erro quando
+  # o banco degrada — não para dar conta do volume.
+  # ---------------------------------------------------------------------------
+  redis:
+    image: redis:7-alpine
+    container_name: cashflow-redis
+    command: >
+      redis-server
+      --appendonly no
+      --maxmemory 256mb
+      --maxmemory-policy allkeys-lru
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks: [cashflow]
+
+volumes:
+  lancamentos-db-data:
+  consolidado-db-data:
+  rabbitmq-data:
+
+networks:
+  cashflow:
+    driver: bridge
