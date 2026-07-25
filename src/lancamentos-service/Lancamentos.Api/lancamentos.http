@@ -1,0 +1,154 @@
+### Lançamentos — requisições de exemplo
+### Abra no VS Code (extensão REST Client), Visual Studio ou Rider e clique em "Send Request".
+### Substitui o Swagger, removido por incompatibilidade de versão no pacote de OpenAPI.
+
+@host = http://localhost:5001
+@comerciante = aaaaaaaa-0000-0000-0000-000000000001
+@hoje = 2026-07-25
+
+### 1. Registrar um crédito — 201 Created
+# @name criar
+POST {{host}}/api/lancamentos
+Content-Type: application/json
+Idempotency-Key: ped-1
+X-Correlation-Id: 7c9e6679-7425-40de-944b-e07fc1f90ae7
+
+{
+  "comercianteId": "{{comerciante}}",
+  "tipo": "CREDITO",
+  "valor": 150.00,
+  "moeda": "BRL",
+  "dataCompetencia": "{{hoje}}",
+  "descricao": "Venda balcão"
+}
+
+### 2. Repetir a MESMA chave com o MESMO payload — 200 OK, mesmo id
+POST {{host}}/api/lancamentos
+Content-Type: application/json
+Idempotency-Key: ped-1
+
+{
+  "comercianteId": "{{comerciante}}",
+  "tipo": "CREDITO",
+  "valor": 150.00,
+  "moeda": "BRL",
+  "dataCompetencia": "{{hoje}}",
+  "descricao": "Venda balcão"
+}
+
+### 3. Mesma chave com payload DIFERENTE — 409 Conflict
+POST {{host}}/api/lancamentos
+Content-Type: application/json
+Idempotency-Key: ped-1
+
+{
+  "comercianteId": "{{comerciante}}",
+  "tipo": "DEBITO",
+  "valor": 999.00,
+  "moeda": "BRL",
+  "dataCompetencia": "{{hoje}}"
+}
+
+### 4. Sem Idempotency-Key — 400 Bad Request
+POST {{host}}/api/lancamentos
+Content-Type: application/json
+
+{
+  "comercianteId": "{{comerciante}}",
+  "tipo": "CREDITO",
+  "valor": 10.00,
+  "moeda": "BRL",
+  "dataCompetencia": "{{hoje}}"
+}
+
+### 5. Valor negativo — 400, código lancamento.valor_nao_positivo
+POST {{host}}/api/lancamentos
+Content-Type: application/json
+Idempotency-Key: neg-1
+
+{
+  "comercianteId": "{{comerciante}}",
+  "tipo": "CREDITO",
+  "valor": -5.00,
+  "moeda": "BRL",
+  "dataCompetencia": "{{hoje}}"
+}
+
+### 6. Valor com 3 casas decimais — 400, código lancamento.precisao_invalida
+POST {{host}}/api/lancamentos
+Content-Type: application/json
+Idempotency-Key: prec-1
+
+{
+  "comercianteId": "{{comerciante}}",
+  "tipo": "CREDITO",
+  "valor": 10.005,
+  "moeda": "BRL",
+  "dataCompetencia": "{{hoje}}"
+}
+
+### 7. Data de competência futura — 400, código lancamento.data_competencia_futura
+POST {{host}}/api/lancamentos
+Content-Type: application/json
+Idempotency-Key: fut-1
+
+{
+  "comercianteId": "{{comerciante}}",
+  "tipo": "CREDITO",
+  "valor": 10.00,
+  "moeda": "BRL",
+  "dataCompetencia": "2030-01-01"
+}
+
+### 8. Moeda de zero casas decimais — 400, código lancamento.moeda_nao_suportada
+POST {{host}}/api/lancamentos
+Content-Type: application/json
+Idempotency-Key: jpy-1
+
+{
+  "comercianteId": "{{comerciante}}",
+  "tipo": "CREDITO",
+  "valor": 1000,
+  "moeda": "JPY",
+  "dataCompetencia": "{{hoje}}"
+}
+
+### 9. Débito, para o saldo do dia ficar misto
+POST {{host}}/api/lancamentos
+Content-Type: application/json
+Idempotency-Key: ped-2
+
+{
+  "comercianteId": "{{comerciante}}",
+  "tipo": "DEBITO",
+  "valor": 320.50,
+  "moeda": "BRL",
+  "dataCompetencia": "{{hoje}}",
+  "descricao": "Compra de insumos"
+}
+
+### 10. Consultar por id — 200
+GET {{host}}/api/lancamentos/{{criar.response.body.id}}?comercianteId={{comerciante}}
+
+### 11. Listar o período — 200 com metadados de paginação
+GET {{host}}/api/lancamentos?comercianteId={{comerciante}}&dataInicio=2026-07-01&dataFim=2026-07-31&pagina=1&tamanhoPagina=50
+
+### 12. Período invertido — 400, código consulta.periodo_invalido
+GET {{host}}/api/lancamentos?comercianteId={{comerciante}}&dataInicio=2026-07-31&dataFim=2026-07-01
+
+### 13. Estornar o lançamento do passo 1 — 201, tipo invertido para DEBITO
+# @name estornar
+POST {{host}}/api/lancamentos/{{criar.response.body.id}}/estorno?comercianteId={{comerciante}}
+Idempotency-Key: est-1
+
+### 14. Estornar o mesmo lançamento de novo — 409 Conflict
+POST {{host}}/api/lancamentos/{{criar.response.body.id}}/estorno?comercianteId={{comerciante}}
+Idempotency-Key: est-2
+
+### 15. Estornar um estorno — 422 Unprocessable Entity
+POST {{host}}/api/lancamentos/{{estornar.response.body.id}}/estorno?comercianteId={{comerciante}}
+Idempotency-Key: est-3
+
+### 16. Estornar lançamento inexistente — 404 Not Found
+POST {{host}}/api/lancamentos/99999999-9999-4999-8999-999999999999/estorno?comercianteId={{comerciante}}
+Idempotency-Key: est-4
