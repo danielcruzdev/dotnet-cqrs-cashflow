@@ -15,6 +15,12 @@
 -- por lançamento compensatório (estorno), preservando a trilha de auditoria
 -- e permitindo que o read model se corrija pelo mesmo caminho de eventos.
 -- -----------------------------------------------------------------------------
+-- Nota sobre o id: na prática ele é sempre gerado pela aplicação, como UUIDv7
+-- (Guid.CreateVersion7), cujos 48 bits iniciais são timestamp. Isso faz as
+-- inserções caírem no final do índice B-tree em vez de espalhadas, evitando a
+-- fragmentação de página típica de chave aleatória. O DEFAULT abaixo é só rede
+-- de segurança para inserção manual e produz UUIDv4 — se ele disparar em volume,
+-- é sinal de que algo está inserindo por fora da aplicação.
 CREATE TABLE lancamentos (
     id                  UUID            PRIMARY KEY DEFAULT gen_random_uuid(),
     comerciante_id      UUID            NOT NULL,
