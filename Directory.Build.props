@@ -1,0 +1,41 @@
+<Project>
+
+  <!--
+    Configurações compartilhadas por todos os projetos das duas solutions.
+    Centralizar aqui evita divergência entre os dez .csproj e garante que
+    uma mudança de padrão (versão de linguagem, nível de warning) valha
+    para o repositório inteiro de uma vez.
+  -->
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <InvariantGlobalization>true</InvariantGlobalization>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <!--
+      Warning vira erro. É deliberado: num projeto com prazo curto, warning
+      acumulado é dívida que ninguém volta para pagar. O custo de disciplina
+      é pago no momento em que o código é escrito, não depois.
+    -->
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+    <AnalysisLevel>latest-recommended</AnalysisLevel>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <!-- Determinismo de build, útil para CI e para diagnóstico de binário. -->
+    <Deterministic>true</Deterministic>
+    <ContinuousIntegrationBuild Condition="'$(CI)' == 'true'">true</ContinuousIntegrationBuild>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <Authors>Daniel Cruz</Authors>
+    <Product>Cashflow</Product>
+  </PropertyGroup>
+
+</Project>
