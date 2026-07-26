@@ -2,6 +2,8 @@
 
   <PropertyGroup>
     <IsPackable>false</IsPackable>
+    <!-- Código de teste não precisa da mesma superfície de analisador da produção. -->
+    <AnalysisLevel>latest-minimum</AnalysisLevel>
   </PropertyGroup>
 
   <ItemGroup>
@@ -19,6 +21,9 @@
   <ItemGroup>
     <ProjectReference Include="..\Lancamentos.Domain\Lancamentos.Domain.csproj" />
     <ProjectReference Include="..\Lancamentos.Application\Lancamentos.Application.csproj" />
+    <!-- Infrastructure entra pelo RelogioDoComerciante: a conversão de fuso é
+         a regra mais frágil do domínio e precisa de teste sobre o código real. -->
+    <ProjectReference Include="..\Lancamentos.Infrastructure\Lancamentos.Infrastructure.csproj" />
   </ItemGroup>
 
 </Project>
