@@ -1,5 +1,7 @@
 # Cashflow — Controle de Fluxo de Caixa
 
+[![CI](https://github.com/danielcruzdev/dotnet-cqrs-cashflow/actions/workflows/ci.yml/badge.svg)](https://github.com/danielcruzdev/dotnet-cqrs-cashflow/actions/workflows/ci.yml)
+
 Sistema de controle de fluxo de caixa diário para comerciantes: um serviço
 registra os lançamentos (débitos e créditos) e outro serve o saldo diário
 consolidado.
@@ -27,7 +29,8 @@ lookup por chave primária — uma instância .NET opera na casa dos milhares. O
 desafio aqui não é throughput, é **isolamento de falha**. Cache, circuit breaker
 e rate limiting existem para proteger a latência de cauda e o error budget
 quando uma dependência degrada, não para dar conta do volume. A conta está em
-[`docs/slos.md`](docs/slos.md).
+[`docs/slos.md`](docs/slos.md) — e o k6 confirmou: **p95 de 1,98 ms e 0% de
+perda sob os 50 rps**, contra um SLO de 100 ms.
 
 ---
 
@@ -278,6 +281,62 @@ contêiner do RabbitMQ: cinco `201` com o broker fora, cinco linhas pendentes na
 outbox, e a outbox drena com o saldo convergindo na volta. É o benefício menos
 óbvio do Outbox — sem ele, o broker seria dependência síncrona da escrita.
 
+### Teste de carga
+
+Com o ambiente no ar, um comando — o k6 roda em contêiner, no perfil `load`, e
+não sobe junto com o `docker compose up`:
+
+```bash
+docker compose up -d
+docker compose --profile load run --rm k6
+```
+
+[`load/consolidado-50rps.js`](load/consolidado-50rps.js) aplica 50 req/s de
+consulta ao saldo diário por 60 s, sorteando entre sete dias semeados no
+`setup` — consultar sempre a mesma chave mediria um único cache hit repetido.
+
+**Os thresholds do script são os SLOs**, não números decorativos: se algum for
+violado, o k6 sai com código diferente de zero e o comando falha.
+
+| Threshold | SLO |
+|---|---|
+| `http_req_failed{alvo:consolidado}: rate<0.05` | nº 2 — error budget de 5% |
+| `http_req_duration{alvo:consolidado}: p(95)<100` | nº 3 — p95 < 100 ms |
+| `http_req_duration{alvo:consolidado}: p(99)<300` | nº 4 — p99 < 300 ms |
+
+A tag `alvo:consolidado` isola as consultas: as requisições do `setup` (token e
+seed) entram nas métricas globais do k6, mas não podem contar contra o SLO
+medido.
+
+**Resultado medido** — 3.001 consultas, 10 VUs, nenhum threshold violado:
+
+| Métrica | SLO | Medido | Folga |
+|---|---|---|---|
+| Falhas (SLO 2) | < 5% | **0,00%** (0 de 3.001) | error budget intacto |
+| p95 (SLO 3) | < 100 ms | **1,98 ms** | 50× |
+| p99 (SLO 4) | < 300 ms | **2,80 ms** | 107× |
+| Mediana | — | 1,15 ms | — |
+| Máximo | — | 144,75 ms | primeira requisição: JIT e abertura do pool |
+
+Os 50 rps não chegaram a exigir nada do serviço: pela lei de Little, 50 req/s ×
+1,5 ms de média são **0,08 requisição em voo**. Os 10 VUs pré-alocados nunca
+precisaram crescer, e a estimativa de capacidade de
+[`docs/slos.md`](docs/slos.md) — que previa ~2 ms por consulta — se confirmou
+por medição.
+
+**O que este teste não mede**, e por isso não vira afirmação: o teto de
+saturação (achar o joelho da curva exigiria um cenário de rampa), o SLO 5 (p95
+da escrita — as sete requisições de seed não são amostra), e o efeito da rede
+real, já que cliente e serviço rodam no mesmo host.
+
+### Integração contínua
+
+[`.github/workflows/ci.yml`](.github/workflows/ci.yml) roda a cada push: build
+das duas solutions com **warnings tratados como erro**, testes de unidade e a
+suíte E2E completa — incluindo os dois testes de resiliência, que sobem
+PostgreSQL, RabbitMQ e Redis por Testcontainers no próprio runner. O requisito
+âncora é verificado a cada commit, não só na máquina de quem escreveu.
+
 ---
 
 ## Decisões arquiteturais
@@ -305,8 +364,9 @@ Documentação de apoio: [arquitetura](docs/arquitetura.md) ·
 | # | SLI | SLO | Status nesta entrega |
 |---|---|---|---|
 | 1 | Disponibilidade do `POST /api/lancamentos` | 99,5% (99,9% com réplica do banco) | 🎯 meta de produção |
-| 2 | Disponibilidade do `GET /api/consolidado` no pico | ≥ 95% sob 50 rps | 🎯 meta — k6 não executado |
-| 3–5 | Latências p95/p99 de consulta e p95 de escrita | < 100 ms / < 300 ms / < 150 ms | 🎯 meta — k6 não executado |
+| 2 | Disponibilidade do `GET /api/consolidado` no pico | ≥ 95% sob 50 rps | ✅ medido — 0% de perda |
+| 3–4 | Latências p95 e p99 da consulta | < 100 ms / < 300 ms | ✅ medido — 1,98 ms / 2,80 ms |
+| 5 | Latência p95 do `POST /api/lancamentos` | < 150 ms | 🎯 meta — fora do escopo do script de carga |
 | 6 | **Lag de consistência eventual (p95)** | **< 5 s** | ✅ instrumentado no consumer |
 | 7 | Perda de eventos | 0 | ✅ teste automatizado |
 | 8 | Divergência de saldo | 0 | ⚠️ query manual no [runbook](docs/runbook.md) |
@@ -409,7 +469,8 @@ abaixo.
   definidos em [`docs/slos.md`](docs/slos.md); falta a instrumentação de
   exportação — o lag já é um `Histogram` do `System.Diagnostics.Metrics`, então
   trocar isso vira configuração, não mudança de código.
-- **Teste de carga k6** com 50 rps sustentados, fechando os SLOs 2 a 5.
+- **Teste de saturação** com cenário de rampa, para achar o teto do serviço em
+  vez de só provar que 50 rps cabem, e um cenário de escrita fechando o SLO 5.
 
 **Dados e escala**
 
@@ -439,6 +500,8 @@ escalar o consumo junto.
 .
 ├── docker-compose.yml          seis contêineres: 2 bancos, broker, cache, 2 APIs
 ├── Directory.Build.props       TFM, nullable, warnings como erro
+├── .github/workflows/ci.yml    build + testes de unidade + E2E a cada push
+├── load/                       teste de carga k6 com os SLOs como thresholds
 ├── docs/
 │   ├── adr/                    0001..0009 — as decisões e seus trade-offs
 │   ├── arquitetura.md          C4 nível 1 e 2 + os três diagramas de fluxo

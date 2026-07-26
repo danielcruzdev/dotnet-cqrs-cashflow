@@ -165,6 +165,27 @@ services:
         condition: service_healthy
     networks: [cashflow]
 
+  # ---------------------------------------------------------------------------
+  # Teste de carga dos SLOs 2, 3 e 4. Fica no perfil `load`, então não sobe
+  # junto com o `docker compose up`:
+  #
+  #   docker compose --profile load run --rm k6
+  #
+  # Rodando dentro da rede do compose, fala com as APIs pelo nome e pela porta
+  # interna 8080 — o resultado não depende do mapeamento de portas do host.
+  # ---------------------------------------------------------------------------
+  k6:
+    image: grafana/k6:latest
+    profiles: [load]
+    environment:
+      LANCAMENTOS_URL: http://lancamentos-api:8080
+      CONSOLIDADO_URL: http://consolidado-api:8080
+    volumes:
+      - ./load:/scripts:ro
+    working_dir: /scripts
+    command: run consolidado-50rps.js
+    networks: [cashflow]
+
 volumes:
   lancamentos-db-data:
   consolidado-db-data:

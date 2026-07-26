@@ -13,10 +13,10 @@ produção**.
 | # | SLI | SLO | Como é medido | Status nesta entrega |
 |---|---|---|---|---|
 | 1 | Disponibilidade do `POST /api/lancamentos` | 99,5% mensal na topologia atual; 99,9% com réplica do `lancamentos_db` | % de respostas não-5xx | 🎯 meta de produção |
-| 2 | Disponibilidade do `GET /api/consolidado` no pico | ≥ 95% sob 50 rps (error budget de 5%) | % de respostas não-5xx/429 sob carga | 🎯 meta — script k6 não executado |
-| 3 | Latência p95 do `GET /api/consolidado` | < 100 ms | histograma sob carga | 🎯 meta — script k6 não executado |
-| 4 | Latência p99 do `GET /api/consolidado` | < 300 ms | histograma sob carga | 🎯 meta — script k6 não executado |
-| 5 | Latência p95 do `POST /api/lancamentos` | < 150 ms | histograma sob carga | 🎯 meta — script k6 não executado |
+| 2 | Disponibilidade do `GET /api/consolidado` no pico | ≥ 95% sob 50 rps (error budget de 5%) | % de respostas não-5xx/429 sob carga | ✅ medido — 0,00% de perda em 3.001 consultas |
+| 3 | Latência p95 do `GET /api/consolidado` | < 100 ms | histograma sob carga | ✅ medido — **1,98 ms** |
+| 4 | Latência p99 do `GET /api/consolidado` | < 300 ms | histograma sob carga | ✅ medido — **2,80 ms** |
+| 5 | Latência p95 do `POST /api/lancamentos` | < 150 ms | histograma sob carga | 🎯 meta — fora do escopo do script de carga |
 | 6 | **Lag de consistência eventual (p95)** | < 5 s | `now() - evento.criadoEm` no consumer, no instante do `UPSERT` | ✅ instrumentado (`cashflow.consolidado.lag_consistencia`) |
 | 7 | Perda de eventos | 0 | comparação write × read model | ✅ teste automatizado |
 | 8 | Divergência de saldo (integridade) | 0 | query de reconciliação | ⚠️ verificação manual — ver [runbook](runbook.md) |
@@ -25,9 +25,38 @@ produção**.
 
 A última coluna é deliberada. Publicar dez SLOs sem dizer quais têm
 instrumentação seria o mesmo tipo de promessa vazia que a matriz de falhas evita
-ao declarar os SPOFs. Os SLOs 2 a 5 dependem de um teste de carga com k6, que
-está planejado e **não** foi executado nesta entrega — o número que apareceria
-aqui seria estimativa, não medição.
+ao declarar os SPOFs. Os SLOs 2, 3 e 4 saíram de meta para medição na §1.3; o
+nº 5 continua declarado como meta porque o script de carga cobre a **consulta**,
+e sete requisições de seed não são amostra para afirmar a latência da escrita.
+
+### 1.3 Resultado do teste de carga
+
+`load/consolidado-50rps.js` — 50 req/s de consulta ao saldo diário por 60 s,
+sorteando entre sete dias semeados. Os thresholds do script **são** os SLOs, e
+nenhum foi violado:
+
+| Métrica | SLO | Medido |
+|---|---|---|
+| `http_req_failed{alvo:consolidado}` | < 5% | **0,00%** — 0 de 3.001 |
+| `http_req_duration{alvo:consolidado}` p95 | < 100 ms | **1,98 ms** |
+| `http_req_duration{alvo:consolidado}` p99 | < 300 ms | **2,80 ms** |
+| Mediana | — | 1,15 ms |
+| Média | — | 1,50 ms |
+| Máximo | — | 144,75 ms (primeira requisição: JIT e abertura do pool) |
+
+Reproduzir: `docker compose up -d` e
+`docker compose --profile load run --rm k6`.
+
+**Três ressalvas, para o número não dizer mais do que mediu:**
+
+1. **O teto não foi medido.** 50 rps não saturou nada — os 10 VUs pré-alocados
+   nunca precisaram crescer. Achar o joelho da curva exigiria um cenário de
+   rampa (`ramping-arrival-rate`), que é outro teste.
+2. **Cliente e serviço no mesmo host.** O k6 roda como contêiner na rede do
+   compose, então o número não inclui RTT de rede real. Em produção a latência
+   de rede domina esses 2 ms.
+3. **A escrita não foi medida** (SLO nº 5) — o caminho do `POST` envolve
+   transação com outbox e mereceria cenário próprio.
 
 ### 1.1 Por que a métrica nº 6 é a mais importante
 
@@ -80,6 +109,10 @@ são quatro níveis de árvore, com as páginas quentes em memória.
 
 Fazendo a conta pelo outro lado: 50 rps × ~2 ms por consulta = **0,1 conexão
 ocupada em média**. A pool padrão do Npgsql tem 100.
+
+**A estimativa acima foi escrita antes do teste e confirmada por ele:** o k6
+mediu 1,5 ms de média, o que dá 0,08 requisição em voo pela lei de Little
+(§1.3). A conta de guardanapo e a medição bateram na mesma ordem de grandeza.
 
 Isso **não invalida o design — reposiciona o problema**. O desafio não é de
 throughput, é de **isolamento de falha**. E dizer isso tem três efeitos:
