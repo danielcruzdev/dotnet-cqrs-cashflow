@@ -1,6 +1,7 @@
 using System.Text;
 using System.Text.Json;
 using Consolidado.Domain;
+using Consolidado.Infrastructure.Diagnostico;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -103,6 +104,9 @@ public sealed partial class LancamentoRealizadoConsumer(
             return;
         }
 
+        using var escopoLog = logger.BeginScope(
+            new Dictionary<string, object> { ["CorrelationId"] = evento.CorrelationId });
+
         try
         {
             using var escopo = escopos.CreateScope();
@@ -116,8 +120,10 @@ public sealed partial class LancamentoRealizadoConsumer(
             }
             else
             {
-                var lag = DateTimeOffset.UtcNow - evento.CriadoEm;
-                LogAplicado(logger, evento.EventId, evento.CorrelationId, lag.TotalMilliseconds);
+                var lag = (DateTimeOffset.UtcNow - evento.CriadoEm).TotalMilliseconds;
+
+                Metricas.LagDeConsistencia.Record(lag);
+                LogAplicado(logger, evento.EventId, evento.CorrelationId, lag);
             }
 
             await canal.BasicAckAsync(args.DeliveryTag, multiple: false);
