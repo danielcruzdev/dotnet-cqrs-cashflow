@@ -25,6 +25,8 @@ public sealed class ObterSaldoPeriodoQueryHandler(ISaldoDiarioRepository reposit
     {
         ArgumentNullException.ThrowIfNull(consulta);
 
+        var moeda = MoedaDeConsulta.Normalizar(consulta.Moeda);
+
         if (consulta.De > consulta.Ate)
         {
             throw new ConsultaInvalidaException(
@@ -39,11 +41,11 @@ public sealed class ObterSaldoPeriodoQueryHandler(ISaldoDiarioRepository reposit
         }
 
         var dias = await repositorio.ListarPeriodoAsync(
-            consulta.ComercianteId, consulta.De, consulta.Ate, consulta.Moeda, cancellationToken);
+            consulta.ComercianteId, consulta.De, consulta.Ate, moeda, cancellationToken);
 
         return new SaldoPeriodo(
             consulta.ComercianteId,
-            consulta.Moeda,
+            moeda,
             consulta.De,
             consulta.Ate,
             dias,

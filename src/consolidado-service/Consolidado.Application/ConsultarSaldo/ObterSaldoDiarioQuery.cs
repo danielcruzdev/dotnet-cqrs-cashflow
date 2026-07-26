@@ -15,10 +15,12 @@ public sealed class ObterSaldoDiarioQueryHandler(ISaldoDiarioRepository reposito
     {
         ArgumentNullException.ThrowIfNull(consulta);
 
+        var moeda = MoedaDeConsulta.Normalizar(consulta.Moeda);
+
         var saldo = await repositorio.ObterAsync(
-            consulta.ComercianteId, consulta.Data, consulta.Moeda, cancellationToken);
+            consulta.ComercianteId, consulta.Data, moeda, cancellationToken);
 
         // Dia sem lançamentos devolve zeros, não 404.
-        return saldo ?? SaldoDiario.Vazio(consulta.ComercianteId, consulta.Data, consulta.Moeda);
+        return saldo ?? SaldoDiario.Vazio(consulta.ComercianteId, consulta.Data, moeda);
     }
 }
