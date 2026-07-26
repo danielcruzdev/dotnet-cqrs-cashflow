@@ -15,6 +15,8 @@ builder.Services.AddExceptionHandler<DominioExceptionHandler>();
 // Cobre formato; regra de negócio é do domínio.
 builder.Services.AddValidation();
 
+builder.Services.AdicionarAutenticacaoJwt(builder.Configuration);
+
 // Composition root: único ponto que conhece implementações concretas.
 builder.Services.AdicionarInfraestruturaDeLancamentos(builder.Configuration);
 
@@ -30,8 +32,12 @@ var app = builder.Build();
 app.UseExceptionHandler();
 app.UseStatusCodePages();
 
+app.UseAuthentication();
+app.UseAuthorization();
+
 app.MapGet("/", () => Results.Ok(new { servico = "lancamentos", versao = "0.1.0" }));
 
+app.MapearToken();
 app.MapearLancamentos();
 
 app.Run();
