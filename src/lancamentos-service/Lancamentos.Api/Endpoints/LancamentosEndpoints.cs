@@ -71,7 +71,8 @@ public static class LancamentosEndpoints
 
         return resultado.Status switch
         {
-            StatusCriacao.Criado => TypedResults.Created($"/api/lancamentos/{corpo.Id}", corpo),
+            StatusCriacao.Criado => TypedResults.Created(
+                $"/api/lancamentos/{corpo.Id}?comercianteId={corpo.ComercianteId}", corpo),
 
             // Nada foi criado nesta requisição.
             StatusCriacao.JaRegistrado => TypedResults.Ok(corpo),
@@ -114,7 +115,7 @@ public static class LancamentosEndpoints
         return resultado.Status switch
         {
             StatusEstorno.Criado => TypedResults.Created(
-                $"/api/lancamentos/{resultado.Estorno!.Id}",
+                $"/api/lancamentos/{resultado.Estorno!.Id}?comercianteId={comercianteId}",
                 LancamentoResponse.De(resultado.Estorno)),
 
             StatusEstorno.JaRegistrado => TypedResults.Ok(
