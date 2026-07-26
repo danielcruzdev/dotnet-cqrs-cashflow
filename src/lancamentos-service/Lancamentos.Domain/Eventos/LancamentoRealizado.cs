@@ -1,8 +1,10 @@
+using System.Text.Json.Serialization;
+
 namespace Lancamentos.Domain.Eventos;
 
 /// <summary>
-/// Publicado sempre que um lançamento é registrado. É o único elo entre o
-/// serviço de Lançamentos e o de Consolidado.
+/// Publicado a cada lançamento registrado. Estorno não tem evento próprio: é um
+/// LancamentoRealizado com tipo invertido e EstornoDeId preenchido.
 /// </summary>
 public sealed record LancamentoRealizado : EventoDeDominio
 {
@@ -10,11 +12,10 @@ public sealed record LancamentoRealizado : EventoDeDominio
 
     public override string EventType => nameof(LancamentoRealizado);
 
+    [JsonIgnore]
     public override string RoutingKey => "lancamento.realizado.v1";
 
     public required Guid LancamentoId { get; init; }
-
-    public required Guid Comerciante { get; init; }
 
     public required string Tipo { get; init; }
 
@@ -22,22 +23,11 @@ public sealed record LancamentoRealizado : EventoDeDominio
 
     public required string Moeda { get; init; }
 
-    public required DateOnly Competencia { get; init; }
-
     public Guid? EstornoDeId { get; init; }
 
-    /// <summary>
-    /// Instante em que o lançamento foi gravado no serviço de origem.
-    /// </summary>
+    /// <summary>Instante da escrita na origem. Base do SLI de lag de consistência.</summary>
     public required DateTimeOffset CriadoEm { get; init; }
 
-    public override Guid AgregadoId => LancamentoId;
-
-    public override Guid ComercianteId => Comerciante;
-
-    public override DateOnly DataCompetencia => Competencia;
-
-    /// <summary>Monta o evento a partir da entidade recém-criada.</summary>
     public static LancamentoRealizado De(Lancamento lancamento, Guid correlationId)
     {
         ArgumentNullException.ThrowIfNull(lancamento);
@@ -46,12 +36,13 @@ public sealed record LancamentoRealizado : EventoDeDominio
         {
             OccurredAt = lancamento.CriadoEm,
             CorrelationId = correlationId,
+            AgregadoId = lancamento.Id,
+            ComercianteId = lancamento.ComercianteId,
+            DataCompetencia = lancamento.DataCompetencia,
             LancamentoId = lancamento.Id,
-            Comerciante = lancamento.ComercianteId,
             Tipo = lancamento.Tipo.ParaPersistencia(),
             Valor = lancamento.Valor.Valor,
             Moeda = lancamento.Valor.Moeda.Codigo,
-            Competencia = lancamento.DataCompetencia,
             EstornoDeId = lancamento.EstornoDeId,
             CriadoEm = lancamento.CriadoEm,
         };

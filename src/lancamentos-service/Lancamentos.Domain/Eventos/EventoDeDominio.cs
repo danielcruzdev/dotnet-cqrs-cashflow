@@ -1,39 +1,30 @@
+using System.Text.Json.Serialization;
+
 namespace Lancamentos.Domain.Eventos;
 
-/// <summary>
-/// Envelope comum a todo evento publicado pelo serviço.
-/// </summary>
+/// <summary>Envelope comum a todo evento publicado pelo serviço.</summary>
 public abstract record EventoDeDominio
 {
-    /// <summary>Identidade do evento. Chave de dedupe no consumidor.</summary>
+    /// <summary>Chave de dedupe no consumidor — o broker entrega at-least-once.</summary>
     public Guid EventId { get; init; } = Guid.CreateVersion7();
 
-    /// <summary>Versão do contrato do payload.</summary>
     public abstract int Version { get; }
 
-    /// <summary>Nome do tipo do evento, usado no roteamento e na desserialização.</summary>
     public abstract string EventType { get; }
 
-    /// <summary>Momento em que o fato ocorreu, em UTC.</summary>
     public required DateTimeOffset OccurredAt { get; init; }
 
-    /// <summary>
-    /// Identificador de rastreamento propagado desde a requisição HTTP original.
-    /// </summary>
+    /// <summary>Propagado da requisição HTTP original até o consumidor.</summary>
     public required Guid CorrelationId { get; init; }
 
-    /// <summary>Chave de roteamento no broker.</summary>
+    public required Guid AgregadoId { get; init; }
+
+    public required Guid ComercianteId { get; init; }
+
+    /// <summary>Coluna própria na outbox: o replay recorta por competência.</summary>
+    public required DateOnly DataCompetencia { get; init; }
+
+    /// <summary>Roteamento é decisão de infraestrutura, não parte do contrato.</summary>
+    [JsonIgnore]
     public abstract string RoutingKey { get; }
-
-    /// <summary>Agregado que originou o evento.</summary>
-    public abstract Guid AgregadoId { get; }
-
-    /// <summary>Comerciante dono do agregado. Coluna própria na outbox, para replay.</summary>
-    public abstract Guid ComercianteId { get; }
-
-    /// <summary>
-    /// Competência do fato. Coluna própria na outbox porque o replay recorta por
-    /// competência, não por data física de gravação.
-    /// </summary>
-    public abstract DateOnly DataCompetencia { get; }
 }
