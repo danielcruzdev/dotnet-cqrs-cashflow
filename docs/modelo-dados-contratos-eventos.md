@@ -355,7 +355,7 @@ Cria o lançamento compensatório do lançamento `{id}` (§1.2). Também exige `
 
 ### 5.4 `GET /api/lancamentos` e `GET /api/lancamentos/{id}` (serviço de Lançamentos)
 
-Query params da listagem: `comercianteId` (**obrigatório**), `dataInicio`, `dataFim`, `pagina`, `tamanhoPagina` (default 50, máximo 200). Sem este endpoint o serviço é write-only — o comerciante não consegue conferir o que lançou, e o avaliador não consegue inspecionar o estado sem abrir o banco.
+Query params da listagem: `comercianteId`, `dataInicio` e `dataFim` são **obrigatórios** — chegam como `Guid` e `DateOnly` não-anuláveis, então a falta de qualquer um vira `400` já na ligação de parâmetros, **antes** da checagem de dono; `pagina` (default 1) e `tamanhoPagina` (default 50, máximo 200) são opcionais. Uma consequência de ordem que vale registrar: uma requisição para o comerciante errado **sem** as datas responde `400`, não `403`. Não vaza nada — só significa que a validação de formato roda antes da autorização. Sem este endpoint o serviço é write-only — o comerciante não consegue conferir o que lançou, e o avaliador não consegue inspecionar o estado sem abrir o banco.
 
 A consulta por id é `GET /api/lancamentos/{id}?comercianteId=`, e o query param também é obrigatório aqui. Responde `200` com o mesmo corpo do `POST` (§5.2), `404` se o id não existe e `403` se o comerciante diverge da claim. É para essa URL — **com** o `comercianteId` — que aponta o header `Location` do `201`: um `Location` que devolve `400` ao ser seguido é um contrato quebrado, ainda que o recurso exista.
 

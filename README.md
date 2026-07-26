@@ -227,7 +227,7 @@ válido leria o caixa de qualquer um.
 |---|---|---|
 | `POST` | `/api/token` | Lançamentos — emissor de desenvolvimento, anônimo |
 | `POST` | `/api/lancamentos` | Lançamentos — exige `Idempotency-Key` |
-| `GET` | `/api/lancamentos?comercianteId=&dataInicio=&dataFim=&pagina=&tamanhoPagina=` | Lançamentos — paginado |
+| `GET` | `/api/lancamentos?comercianteId=&dataInicio=&dataFim=&pagina=&tamanhoPagina=` | Lançamentos — paginado; os três primeiros são obrigatórios |
 | `GET` | `/api/lancamentos/{id}?comercianteId=` | Lançamentos |
 | `POST` | `/api/lancamentos/{id}/estorno?comercianteId=` | Lançamentos |
 | `GET` | `/api/consolidado/{comercianteId}/{data}?moeda=BRL` | Consolidado |
