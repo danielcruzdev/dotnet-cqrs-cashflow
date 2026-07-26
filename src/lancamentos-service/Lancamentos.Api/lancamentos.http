@@ -189,3 +189,27 @@ GET {{host}}/api/lancamentos?comercianteId={{comerciante}}&dataInicio=2026-07-01
 ### 18. Token válido, OUTRO comerciante — 403 Forbidden (IDOR barrado)
 GET {{host}}/api/lancamentos?comercianteId={{outroComerciante}}&dataInicio=2026-07-01&dataFim=2026-07-31
 Authorization: Bearer {{token}}
+
+### 19. Liveness — 200 "Healthy", sem token e sem tocar em dependência
+GET {{host}}/health/live
+
+### 20. Readiness — 200 apenas se o banco de lançamentos responder.
+### Não depende de RabbitMQ nem de Redis: uma queda deles tiraria o serviço do
+### balanceador e pararia a escrita, que é o que a outbox existe para evitar.
+GET {{host}}/health/ready
+
+### 21. Correlação: o id informado volta no header X-Correlation-Id da resposta
+POST {{host}}/api/lancamentos
+Authorization: Bearer {{token}}
+Content-Type: application/json
+Idempotency-Key: corr-1
+X-Correlation-Id: 11111111-1111-4111-8111-111111111111
+
+{
+  "comercianteId": "{{comerciante}}",
+  "tipo": "CREDITO",
+  "valor": 42.00,
+  "moeda": "BRL",
+  "dataCompetencia": "{{hoje}}",
+  "descricao": "Rastreável até o log do consumer"
+}

@@ -54,6 +54,8 @@ builder.Host.UseDefaultServiceProvider(opcoes =>
 
 var app = builder.Build();
 
+app.UsarCorrelacao();
+
 app.UseExceptionHandler();
 app.UseStatusCodePages();
 

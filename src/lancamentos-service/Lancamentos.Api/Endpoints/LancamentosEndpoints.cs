@@ -12,7 +12,6 @@ namespace Lancamentos.Api.Endpoints;
 public static class LancamentosEndpoints
 {
     private const string HeaderIdempotencia = "Idempotency-Key";
-    private const string HeaderCorrelacao = "X-Correlation-Id";
 
     public static IEndpointRouteBuilder MapearLancamentos(this IEndpointRouteBuilder app)
     {
@@ -64,7 +63,7 @@ public static class LancamentosEndpoints
             DataCompetencia = request.DataCompetencia,
             Descricao = request.Descricao,
             ChaveIdempotencia = chave,
-            CorrelationId = ObterCorrelationId(contexto),
+            CorrelationId = Correlacao.Obter(contexto),
         };
 
         var resultado = await handler.ExecutarAsync(comando, cancellationToken);
@@ -109,7 +108,7 @@ public static class LancamentosEndpoints
             ComercianteId = comercianteId,
             LancamentoId = id,
             ChaveIdempotencia = chave,
-            CorrelationId = ObterCorrelationId(contexto),
+            CorrelationId = Correlacao.Obter(contexto),
         }, cancellationToken);
 
         return resultado.Status switch
@@ -208,9 +207,4 @@ public static class LancamentosEndpoints
         title: "Header Idempotency-Key obrigatório",
         detail: "Toda escrita exige o header Idempotency-Key para tornar o retry seguro.",
         statusCode: StatusCodes.Status400BadRequest);
-
-    private static Guid ObterCorrelationId(HttpContext contexto) =>
-        Guid.TryParse(contexto.Request.Headers[HeaderCorrelacao], out var id)
-            ? id
-            : Guid.CreateVersion7();
 }
