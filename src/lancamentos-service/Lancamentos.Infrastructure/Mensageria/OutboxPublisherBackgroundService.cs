@@ -1,4 +1,4 @@
-using System.Text;
+﻿using System.Text;
 using Lancamentos.Domain.Abstracoes;
 using Lancamentos.Infrastructure.Persistencia;
 using Microsoft.Extensions.DependencyInjection;
@@ -56,9 +56,8 @@ public sealed partial class OutboxPublisherBackgroundService(
 
     private async Task<int> ProcessarLoteAsync(CancellationToken cancellationToken)
     {
-        using var escopo = escopos.CreateScope();
+        await using var escopo = escopos.CreateAsyncScope();
 
-        var sessao = escopo.ServiceProvider.GetRequiredService<SessaoDeBanco>();
         var outbox = escopo.ServiceProvider.GetRequiredService<OutboxRepository>();
         var unitOfWork = escopo.ServiceProvider.GetRequiredService<IUnitOfWork>();
 
@@ -127,7 +126,7 @@ public sealed partial class OutboxPublisherBackgroundService(
 
             return true;
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not OperationCanceledException)
         {
             LogPublicacaoFalhou(logger, mensagem.EventId, mensagem.Tentativas + 1, ex);
             return false;
