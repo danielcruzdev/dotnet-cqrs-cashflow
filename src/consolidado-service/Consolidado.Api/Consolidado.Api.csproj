@@ -2,6 +2,24 @@
 
   <ItemGroup>
     <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="10.0.0" />
+    <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="10.0.9" />
+
+    <!--
+      Pin explícito do Microsoft.OpenApi.
+
+      O Microsoft.AspNetCore.OpenApi declara `Microsoft.OpenApi (>= 2.0.0)`, e a
+      resolução do NuGet é pela versão mais baixa que satisfaz — ou seja, 2.0.0,
+      que está no intervalo afetado pelo CVE-2026-49451 (recursão sem controle em
+      referências circulares de schema). Com NuGetAudit e TreatWarningsAsErrors, o
+      NU1903 resultante quebra o build.
+
+      A 2.7.5 é a primeira corrigida do mesmo major, então entra sem mudança de
+      API. A linha 3.x também corrige, mas quebra a compilação: o
+      `IOpenApiMediaType.Example` virou somente-leitura.
+    -->
+    <PackageReference Include="Microsoft.OpenApi" Version="2.7.5" />
+
+    <PackageReference Include="Scalar.AspNetCore" Version="2.14.14" />
   </ItemGroup>
 
   <ItemGroup>

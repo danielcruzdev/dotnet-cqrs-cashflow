@@ -138,6 +138,8 @@ são imediatas.
 | Console do RabbitMQ | http://localhost:15672 — `cashflow` / `cashflow_dev` |
 | `lancamentos_db` | `localhost:5432` — `cashflow` / `cashflow_dev` |
 | `consolidado_db` | `localhost:5433` — `cashflow` / `cashflow_dev` |
+| Referência da API de Lançamentos | http://localhost:5001/scalar |
+| Referência da API de Consolidado | http://localhost:5002/scalar |
 
 > **Se alguma porta já estiver ocupada** (5432 e 6379 são as suspeitas de
 > sempre numa máquina de desenvolvimento), todas as portas publicadas aceitam
@@ -154,13 +156,30 @@ curl http://localhost:5001/health/ready
 curl http://localhost:5002/health/ready
 ```
 
-> **Não há Swagger.** O pacote `Microsoft.AspNetCore.OpenApi` arrasta uma versão
-> de `Microsoft.OpenApi` com CVE conhecido, e a versão corrigida quebra a API do
-> source generator que o acompanha. Com auditoria de vulnerabilidade tratada
-> como erro de build, a saída correta foi não expor OpenAPI nesta versão em vez
-> de suprimir o aviso. A API é exercitável pelo roteiro abaixo e pelos arquivos
-> `lancamentos.http` e `consolidado.http`, versionados junto de cada API e
-> cobrindo os casos de borda de cada endpoint.
+### Explorando a API pelo navegador
+
+Cada serviço expõe uma referência de API navegável, servida pelo
+[Scalar](https://scalar.com), nas mesmas portas do compose:
+
+| | |
+|---|---|
+| Lançamentos | **http://localhost:5001/scalar** |
+| Consolidado | **http://localhost:5002/scalar** |
+
+O documento OpenAPI que alimenta as duas páginas é **gerado a partir dos
+próprios endpoints** (`/openapi/v1.json` em cada serviço), não escrito à mão —
+então não existe especificação para divergir do código, que é o defeito mais
+caro num projeto cuja documentação é o entregável.
+
+Para chamar qualquer endpoint de negócio é preciso um token: pegue um no
+`POST /api/token` (o primeiro da lista, anônimo), copie o campo `token` da
+resposta e cole no painel de autenticação do Scalar. As duas páginas e o
+`/api/token` são os únicos pontos anônimos da API.
+
+Os arquivos `lancamentos.http` e `consolidado.http`, versionados junto de cada
+API, continuam no repositório: eles cobrem os casos de borda de cada endpoint na
+ordem em que fazem sentido, encadeando ids entre as requisições — coisa que uma
+referência de API não faz.
 
 ---
 

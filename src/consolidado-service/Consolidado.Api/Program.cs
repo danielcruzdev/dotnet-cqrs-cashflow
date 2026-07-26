@@ -6,6 +6,7 @@ using Consolidado.Api.Endpoints;
 using Consolidado.Infrastructure;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.AspNetCore.RateLimiting;
+using Scalar.AspNetCore;
 
 // A mesma requisição precisa ser interpretada igual em qualquer região.
 CultureInfo.DefaultThreadCurrentCulture = CultureInfo.InvariantCulture;
@@ -17,6 +18,10 @@ builder.Services.AddProblemDetails();
 builder.Services.AddExceptionHandler<ConsultaExceptionHandler>();
 builder.Services.AdicionarAutenticacaoJwt(builder.Configuration);
 builder.Services.AdicionarInfraestruturaDeConsolidado(builder.Configuration);
+
+// O documento OpenAPI é derivado dos próprios endpoints, não de um arquivo
+// escrito à mão — não existe especificação para divergir do código.
+builder.Services.AddOpenApi(opcoes => opcoes.AddDocumentTransformer<EsquemaBearerTransformer>());
 
 // Deny by default: sem origem configurada, nenhum navegador de terceiro passa.
 var origens = builder.Configuration.GetSection("Cors:Origens").Get<string[]>() ?? [];
@@ -83,6 +88,15 @@ app.MapHealthChecks("/health/ready", new HealthCheckOptions
 {
     Predicate = verificacao => verificacao.Tags.Contains("ready"),
 }).DisableRateLimiting();
+
+// Fora do limitador pela mesma razão dos health checks: sem token, a
+// requisição cai na partição `anonimo` e um 429 aqui viraria "a documentação
+// não abre" — perda causada pela própria proteção.
+app.MapOpenApi().DisableRateLimiting();
+app.MapScalarApiReference(opcoes => opcoes
+    .WithTitle("Cashflow — Consolidado")
+    .AddPreferredSecuritySchemes("Bearer"))
+    .DisableRateLimiting();
 
 app.MapearConsolidado();
 

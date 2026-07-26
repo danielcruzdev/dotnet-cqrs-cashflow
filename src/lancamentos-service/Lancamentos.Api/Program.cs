@@ -3,6 +3,7 @@ using Lancamentos.Api;
 using Lancamentos.Api.Endpoints;
 using Lancamentos.Infrastructure;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
+using Scalar.AspNetCore;
 
 // A mesma requisição precisa ser interpretada igual em qualquer região.
 CultureInfo.DefaultThreadCurrentCulture = CultureInfo.InvariantCulture;
@@ -15,6 +16,10 @@ builder.Services.AddExceptionHandler<DominioExceptionHandler>();
 
 // Cobre formato; regra de negócio é do domínio.
 builder.Services.AddValidation();
+
+// O documento OpenAPI é derivado dos próprios endpoints, não de um arquivo
+// escrito à mão — não existe especificação para divergir do código.
+builder.Services.AddOpenApi(opcoes => opcoes.AddDocumentTransformer<EsquemaBearerTransformer>());
 
 builder.Services.AdicionarAutenticacaoJwt(builder.Configuration);
 
@@ -45,6 +50,13 @@ app.MapHealthChecks("/health/ready", new HealthCheckOptions
 {
     Predicate = verificacao => verificacao.Tags.Contains("ready"),
 });
+
+// Anônimos de propósito: quem abre a referência da API ainda não tem token,
+// e é no endpoint /api/token que ele descobre como obter um.
+app.MapOpenApi();
+app.MapScalarApiReference(opcoes => opcoes
+    .WithTitle("Cashflow — Lançamentos")
+    .AddPreferredSecuritySchemes("Bearer"));
 
 app.MapearToken();
 app.MapearLancamentos();

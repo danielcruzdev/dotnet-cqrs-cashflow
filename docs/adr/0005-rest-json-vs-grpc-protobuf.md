@@ -65,10 +65,29 @@ curinga no [ADR 0002](0002-comunicacao-assincrona-via-broker.md)), e o
 consumidor valida o payload antes de aplicar.
 Um evento malformado vai para a DLQ em vez de contaminar a projeção.
 
-**Nota:** OpenAPI/Swagger ficou fora desta entrega. O pacote
-`Microsoft.AspNetCore.OpenApi` arrasta uma versão de `Microsoft.OpenApi` com CVE
-conhecido, e a versão corrigida tem quebra de API incompatível com o source
-generator que acompanha o pacote. Com auditoria de vulnerabilidade tratada como
-erro de build, a saída correta foi não expor OpenAPI nesta versão em vez de
-suprimir o aviso. A exploração da API fica pelos arquivos `.http` e pelos
-exemplos de `curl` do README.
+**Nota sobre OpenAPI — decisão revista antes da entrega.** A primeira versão
+desta ADR registrava que OpenAPI ficaria **fora**: o
+`Microsoft.AspNetCore.OpenApi` declara `Microsoft.OpenApi (>= 2.0.0)`, o NuGet
+resolve pela menor versão que satisfaz, e a 2.0.0 está no intervalo afetado pelo
+CVE-2026-49451. Com `NuGetAudit` e `TreatWarningsAsErrors`, o `NU1903` derruba o
+build — e suprimir o aviso seria trocar segurança real por conveniência.
+
+O que mudou não foi o critério, foi o diagnóstico. A tentativa original de
+correção foi subir para a linha **3.x**, que corrige o CVE mas quebra a
+compilação (`IOpenApiMediaType.Example` virou somente-leitura). A saída é um
+degrau antes: **fixar `Microsoft.OpenApi` em 2.7.5**, a primeira corrigida do
+mesmo major, num `PackageReference` direto que sobrepõe a resolução transitiva.
+O aviso some sem supressão, e a API pública não muda.
+
+Com o documento resolvido, a interface ficou com o **Scalar**
+(`Scalar.AspNetCore`), que tem **zero dependências** — quem arrastava o CVE era
+o gerador do documento, nunca a UI. Cada serviço serve
+`/openapi/v1.json` e a referência navegável em `/scalar`.
+
+A consequência que importa para este projeto: o documento é derivado dos
+endpoints em tempo de compilação e execução, não escrito à mão. Uma
+especificação mantida à parte seria mais um artefato capaz de divergir do
+código — exatamente a classe de defeito que a validação final passou horas
+eliminando na documentação em prosa. Os arquivos `.http` continuam versionados,
+porque encadeiam ids entre requisições e cobrem os casos de borda na ordem em
+que fazem sentido, o que uma referência de API não faz.
