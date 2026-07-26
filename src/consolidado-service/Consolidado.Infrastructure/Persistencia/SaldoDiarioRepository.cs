@@ -1,11 +1,27 @@
+using System.Text.Json;
 using Consolidado.Domain;
 using Dapper;
+using Microsoft.Extensions.Caching.Distributed;
 using Npgsql;
+using Polly;
 
 namespace Consolidado.Infrastructure.Persistencia;
 
-public sealed class SaldoDiarioRepository(NpgsqlDataSource dataSource) : ISaldoDiarioRepository
+public sealed class SaldoDiarioRepository(
+    NpgsqlDataSource dataSource,
+    IDistributedCache cache,
+    ResiliencePipeline resiliencia) : ISaldoDiarioRepository
 {
+    private static readonly TimeZoneInfo FusoComerciante =
+        TimeZoneInfo.FindSystemTimeZoneById("America/Sao_Paulo");
+
+    private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
+
+    private const string ColunasSelect = """
+        comerciante_id, data, moeda, total_debitos, total_creditos,
+        saldo, qtd_lancamentos, atualizado_em
+        """;
+
     public async Task<bool> AplicarAsync(
         LancamentoRealizado evento,
         CancellationToken cancellationToken = default)
@@ -18,7 +34,7 @@ public sealed class SaldoDiarioRepository(NpgsqlDataSource dataSource) : ISaldoD
             ON CONFLICT DO NOTHING;
             """;
 
-        const string sqlUpsert = """
+        var sqlUpsert = $"""
             INSERT INTO saldo_diario (comerciante_id, data, moeda,
                                       total_debitos, total_creditos, saldo,
                                       qtd_lancamentos, atualizado_em)
@@ -28,7 +44,8 @@ public sealed class SaldoDiarioRepository(NpgsqlDataSource dataSource) : ISaldoD
                 total_creditos  = saldo_diario.total_creditos + EXCLUDED.total_creditos,
                 saldo           = saldo_diario.saldo + EXCLUDED.saldo,
                 qtd_lancamentos = saldo_diario.qtd_lancamentos + 1,
-                atualizado_em   = now();
+                atualizado_em   = now()
+            RETURNING {ColunasSelect};
             """;
 
         await using var conexao = await dataSource.OpenConnectionAsync(cancellationToken);
@@ -48,7 +65,7 @@ public sealed class SaldoDiarioRepository(NpgsqlDataSource dataSource) : ISaldoD
 
         var movimento = Movimento.De(evento.Tipo, evento.Valor);
 
-        await conexao.ExecuteAsync(new CommandDefinition(sqlUpsert, new
+        var atualizado = await conexao.QuerySingleAsync<SaldoDiario>(new CommandDefinition(sqlUpsert, new
         {
             comercianteId = evento.ComercianteId,
             data = evento.DataCompetencia,
@@ -59,6 +76,11 @@ public sealed class SaldoDiarioRepository(NpgsqlDataSource dataSource) : ISaldoD
         }, transacao, cancellationToken: cancellationToken));
 
         await transacao.CommitAsync(cancellationToken);
+
+        // SET com o valor novo, não DEL: com DEL, um leitor que buscou antes da
+        // escrita pode repopular o cache com o valor antigo depois.
+        await GravarNoCacheAsync(atualizado, cancellationToken);
+
         return true;
     }
 
@@ -68,16 +90,81 @@ public sealed class SaldoDiarioRepository(NpgsqlDataSource dataSource) : ISaldoD
         string moeda,
         CancellationToken cancellationToken = default)
     {
-        const string sql = """
-            SELECT comerciante_id, data, moeda, total_debitos, total_creditos,
-                   saldo, qtd_lancamentos, atualizado_em
+        var chave = Chave(comercianteId, data, moeda);
+        var doCache = await cache.GetStringAsync(chave, cancellationToken);
+
+        if (doCache is not null)
+        {
+            return JsonSerializer.Deserialize<SaldoDiario>(doCache, Json);
+        }
+
+        var sql = $"""
+            SELECT {ColunasSelect}
             FROM saldo_diario
             WHERE comerciante_id = @comercianteId AND data = @data AND moeda = @moeda;
             """;
 
-        await using var conexao = await dataSource.OpenConnectionAsync(cancellationToken);
+        var saldo = await resiliencia.ExecuteAsync(async ct =>
+        {
+            await using var conexao = await dataSource.OpenConnectionAsync(ct);
 
-        return await conexao.QueryFirstOrDefaultAsync<SaldoDiario>(new CommandDefinition(
-            sql, new { comercianteId, data, moeda }, cancellationToken: cancellationToken));
+            return await conexao.QueryFirstOrDefaultAsync<SaldoDiario>(new CommandDefinition(
+                sql, new { comercianteId, data, moeda }, cancellationToken: ct));
+        }, cancellationToken);
+
+        if (saldo is not null)
+        {
+            await GravarNoCacheAsync(saldo, cancellationToken);
+        }
+
+        return saldo;
     }
+
+    public async Task<IReadOnlyList<SaldoDiario>> ListarPeriodoAsync(
+        Guid comercianteId,
+        DateOnly de,
+        DateOnly ate,
+        string moeda,
+        CancellationToken cancellationToken = default)
+    {
+        // Sem cache: a invalidação do consumer é por dia e não alcançaria uma
+        // resposta de período inteira, que ficaria servindo dado velho.
+        var sql = $"""
+            SELECT {ColunasSelect}
+            FROM saldo_diario
+            WHERE comerciante_id = @comercianteId
+              AND moeda = @moeda
+              AND data BETWEEN @de AND @ate
+            ORDER BY data;
+            """;
+
+        var linhas = await resiliencia.ExecuteAsync(async ct =>
+        {
+            await using var conexao = await dataSource.OpenConnectionAsync(ct);
+
+            return await conexao.QueryAsync<SaldoDiario>(new CommandDefinition(
+                sql, new { comercianteId, de, ate, moeda }, cancellationToken: ct));
+        }, cancellationToken);
+
+        return [.. linhas];
+    }
+
+    private Task GravarNoCacheAsync(SaldoDiario saldo, CancellationToken cancellationToken)
+    {
+        // Dia passado muda pouco, mas não é imutável: lançamento retroativo e
+        // estorno de dia antigo são permitidos.
+        var hoje = DateOnly.FromDateTime(
+            TimeZoneInfo.ConvertTime(DateTimeOffset.UtcNow, FusoComerciante).DateTime);
+
+        var ttl = saldo.Data >= hoje ? TimeSpan.FromSeconds(5) : TimeSpan.FromMinutes(5);
+
+        return cache.SetStringAsync(
+            Chave(saldo.ComercianteId, saldo.Data, saldo.Moeda),
+            JsonSerializer.Serialize(saldo, Json),
+            new DistributedCacheEntryOptions { AbsoluteExpirationRelativeToNow = ttl },
+            cancellationToken);
+    }
+
+    private static string Chave(Guid comercianteId, DateOnly data, string moeda) =>
+        $"consolidado:{comercianteId}:{moeda}:{data:yyyy-MM-dd}";
 }
