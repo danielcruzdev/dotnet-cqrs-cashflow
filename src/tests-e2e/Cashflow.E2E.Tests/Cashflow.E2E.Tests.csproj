@@ -1,0 +1,41 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+    <AnalysisLevel>latest-minimum</AnalysisLevel>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="coverlet.collector" Version="6.0.4" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
+    <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" Version="10.0.0" />
+    <PackageReference Include="FluentAssertions" Version="7.0.0" />
+    <PackageReference Include="xunit" Version="2.9.3" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="3.1.4" />
+    <PackageReference Include="Testcontainers.PostgreSql" Version="4.4.0" />
+    <PackageReference Include="Testcontainers.RabbitMq" Version="4.4.0" />
+    <PackageReference Include="Testcontainers.Redis" Version="4.4.0" />
+    <PackageReference Include="Npgsql" Version="9.0.3" />
+    <PackageReference Include="Dapper" Version="2.1.66" />
+    <PackageReference Include="RabbitMQ.Client" Version="7.2.1" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="Xunit" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\lancamentos-service\Lancamentos.Api\Lancamentos.Api.csproj" />
+    <ProjectReference Include="..\..\consolidado-service\Consolidado.Api\Consolidado.Api.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Os mesmos arquivos que o docker-compose usa. Se o teste tivesse cópia
+         própria do schema ou da topologia, passaria com um ambiente que não existe. -->
+    <Content Include="..\..\lancamentos-service\init\01-schema.sql" Link="ambiente\lancamentos-schema.sql" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="..\..\consolidado-service\init\01-schema.sql" Link="ambiente\consolidado-schema.sql" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="..\..\..\infra\rabbitmq\definitions.json" Link="ambiente\definitions.json" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="..\..\..\infra\rabbitmq\rabbitmq.conf" Link="ambiente\rabbitmq.conf" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+</Project>
