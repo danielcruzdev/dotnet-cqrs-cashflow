@@ -21,8 +21,13 @@ public sealed partial class LancamentoRealizadoConsumer(
     private IConnection? _conexao;
     private IChannel? _canal;
 
+    // O handler de mensagem é chamado pelo dispatcher do broker, sem token próprio.
+    private CancellationToken _parada;
+
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
+        _parada = stoppingToken;
+
         while (!stoppingToken.IsCancellationRequested)
         {
             try
@@ -103,7 +108,7 @@ public sealed partial class LancamentoRealizadoConsumer(
             using var escopo = escopos.CreateScope();
             var repositorio = escopo.ServiceProvider.GetRequiredService<ISaldoDiarioRepository>();
 
-            var aplicado = await repositorio.AplicarAsync(evento);
+            var aplicado = await repositorio.AplicarAsync(evento, _parada);
 
             if (!aplicado)
             {
@@ -117,14 +122,34 @@ public sealed partial class LancamentoRealizadoConsumer(
 
             await canal.BasicAckAsync(args.DeliveryTag, multiple: false);
         }
+        catch (OperationCanceledException) when (_parada.IsCancellationRequested)
+        {
+            // Encerrando: nem ack nem nack. A entrega fica pendente e o broker
+            // reentrega na volta — o dedupe por eventId cobre a repetição.
+        }
         catch (Exception ex)
         {
             LogFalhaAoAplicar(logger, evento.EventId, ex);
 
-            // Com requeue: a falha é do ambiente, não da mensagem. O delay evita
-            // laço quente enquanto a dependência não volta.
-            await Task.Delay(_opcoes.IntervaloReconexao);
-            await canal.BasicNackAsync(args.DeliveryTag, multiple: false, requeue: true);
+            await EsperarEDevolverAsync(canal, args.DeliveryTag);
+        }
+    }
+
+    /// <summary>
+    /// Devolve a mensagem para a fila: a falha é do ambiente, não dela. O delay
+    /// evita laço quente; o token impede que ele segure o shutdown por
+    /// <c>IntervaloReconexao</c> vezes o número de mensagens em voo.
+    /// </summary>
+    private async Task EsperarEDevolverAsync(IChannel canal, ulong deliveryTag)
+    {
+        try
+        {
+            await Task.Delay(_opcoes.IntervaloReconexao, _parada);
+            await canal.BasicNackAsync(deliveryTag, multiple: false, requeue: true);
+        }
+        catch (OperationCanceledException)
+        {
+            // Encerrando durante a espera: o broker reentrega na volta.
         }
     }
 
