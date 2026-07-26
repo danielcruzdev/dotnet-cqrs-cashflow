@@ -1,4 +1,6 @@
 using System.Globalization;
+using Consolidado.Api;
+using Consolidado.Api.Endpoints;
 using Consolidado.Infrastructure;
 
 // A mesma requisição precisa ser interpretada igual em qualquer região.
@@ -8,6 +10,7 @@ CultureInfo.DefaultThreadCurrentUICulture = CultureInfo.InvariantCulture;
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddProblemDetails();
+builder.Services.AddExceptionHandler<ConsultaExceptionHandler>();
 builder.Services.AdicionarInfraestruturaDeConsolidado(builder.Configuration);
 
 // Falha ao subir, não na primeira requisição.
@@ -23,6 +26,8 @@ app.UseExceptionHandler();
 app.UseStatusCodePages();
 
 app.MapGet("/", () => Results.Ok(new { servico = "consolidado", versao = "0.1.0" }));
+
+app.MapearConsolidado();
 
 app.Run();
 
