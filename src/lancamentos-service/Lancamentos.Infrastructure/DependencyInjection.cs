@@ -5,6 +5,7 @@ using Lancamentos.Application.CriarLancamento;
 using Lancamentos.Application.EstornarLancamento;
 using Lancamentos.Domain;
 using Lancamentos.Domain.Abstracoes;
+using Lancamentos.Infrastructure.Diagnostico;
 using Lancamentos.Infrastructure.Mensageria;
 using Lancamentos.Infrastructure.Persistencia;
 using Lancamentos.Infrastructure.Tempo;
@@ -71,6 +72,9 @@ public static class DependencyInjection
         services.Configure<RabbitMqOptions>(configuration.GetSection(RabbitMqOptions.Secao));
         services.AddSingleton<ConexaoRabbitMq>();
         services.AddHostedService<OutboxPublisherBackgroundService>();
+
+        services.AddHealthChecks()
+            .AddCheck<PostgresHealthCheck>("postgres", tags: ["ready"]);
 
         return services;
     }

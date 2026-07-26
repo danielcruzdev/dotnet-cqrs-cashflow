@@ -42,3 +42,10 @@ GET {{host}}/api/consolidado/{{comerciante}}/{{hoje}}
 ### 6. Token válido, OUTRO comerciante — 403 Forbidden (IDOR barrado)
 GET {{host}}/api/consolidado/{{outroComerciante}}/{{hoje}}
 Authorization: Bearer {{token}}
+
+### 7. Liveness — 200 "Healthy", sem token e fora do rate limiter
+GET {{host}}/health/live
+
+### 8. Readiness — 200 apenas se o banco do consolidado responder.
+### Redis fica de fora: sem cache a consulta cai no banco, não falha.
+GET {{host}}/health/ready

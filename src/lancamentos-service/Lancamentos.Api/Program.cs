@@ -2,6 +2,7 @@ using System.Globalization;
 using Lancamentos.Api;
 using Lancamentos.Api.Endpoints;
 using Lancamentos.Infrastructure;
+using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 
 // A mesma requisição precisa ser interpretada igual em qualquer região.
 CultureInfo.DefaultThreadCurrentCulture = CultureInfo.InvariantCulture;
@@ -36,6 +37,12 @@ app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapGet("/", () => Results.Ok(new { servico = "lancamentos", versao = "0.1.0" }));
+
+app.MapHealthChecks("/health/live", new HealthCheckOptions { Predicate = _ => false });
+app.MapHealthChecks("/health/ready", new HealthCheckOptions
+{
+    Predicate = verificacao => verificacao.Tags.Contains("ready"),
+});
 
 app.MapearToken();
 app.MapearLancamentos();

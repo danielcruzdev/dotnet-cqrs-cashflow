@@ -1,6 +1,7 @@
 using Consolidado.Application.Abstracoes;
 using Consolidado.Application.ConsultarSaldo;
 using Consolidado.Domain;
+using Consolidado.Infrastructure.Diagnostico;
 using Consolidado.Infrastructure.Mensageria;
 using Consolidado.Infrastructure.Persistencia;
 using Dapper;
@@ -50,6 +51,9 @@ public static class DependencyInjection
 
         services.Configure<RabbitMqOptions>(configuration.GetSection(RabbitMqOptions.Secao));
         services.AddHostedService<LancamentoRealizadoConsumer>();
+
+        services.AddHealthChecks()
+            .AddCheck<PostgresHealthCheck>("postgres", tags: ["ready"]);
 
         return services;
     }

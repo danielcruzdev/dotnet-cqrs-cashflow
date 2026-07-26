@@ -4,6 +4,7 @@ using System.Threading.RateLimiting;
 using Consolidado.Api;
 using Consolidado.Api.Endpoints;
 using Consolidado.Infrastructure;
+using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.AspNetCore.RateLimiting;
 
 // A mesma requisição precisa ser interpretada igual em qualquer região.
@@ -72,6 +73,14 @@ app.UseAuthorization();
 app.UseRateLimiter();
 
 app.MapGet("/", () => Results.Ok(new { servico = "consolidado", versao = "0.1.0" }));
+
+app.MapHealthChecks("/health/live", new HealthCheckOptions { Predicate = _ => false })
+    .DisableRateLimiting();
+
+app.MapHealthChecks("/health/ready", new HealthCheckOptions
+{
+    Predicate = verificacao => verificacao.Tags.Contains("ready"),
+}).DisableRateLimiting();
 
 app.MapearConsolidado();
 
