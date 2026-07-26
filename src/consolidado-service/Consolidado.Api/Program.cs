@@ -1,17 +1,29 @@
+using System.Globalization;
+using Consolidado.Infrastructure;
+
+// A mesma requisição precisa ser interpretada igual em qualquer região.
+CultureInfo.DefaultThreadCurrentCulture = CultureInfo.InvariantCulture;
+CultureInfo.DefaultThreadCurrentUICulture = CultureInfo.InvariantCulture;
+
 var builder = WebApplication.CreateBuilder(args);
+
+builder.Services.AddProblemDetails();
+builder.Services.AdicionarInfraestruturaDeConsolidado(builder.Configuration);
+
+// Falha ao subir, não na primeira requisição.
+builder.Host.UseDefaultServiceProvider(opcoes =>
+{
+    opcoes.ValidateOnBuild = true;
+    opcoes.ValidateScopes = true;
+});
 
 var app = builder.Build();
 
-// Endpoint de cortesia para confirmar que o serviço subiu.
-// Os endpoints de negócio e os health checks são adicionados nas etapas seguintes.
-app.MapGet("/", () => Results.Ok(new
-{
-    servico = "consolidado",
-    versao = "0.1.0"
-}));
+app.UseExceptionHandler();
+app.UseStatusCodePages();
+
+app.MapGet("/", () => Results.Ok(new { servico = "consolidado", versao = "0.1.0" }));
 
 app.Run();
 
-// Necessário para que WebApplicationFactory<Program> enxergue a classe
-// gerada pelo top-level statements nos testes de integração.
 public partial class Program;
