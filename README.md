@@ -59,7 +59,23 @@ Cada serviço segue a mesma organização em camadas — `Api`, `Application`, `
 docker compose up
 ```
 
-> Instruções detalhadas de execução, testes e configuração serão adicionadas conforme o desenvolvimento avança.
+## Como testar
+
+```bash
+# Testes de unidade do domínio — não precisam de Docker
+dotnet test src/lancamentos-service/Lancamentos.slnx
+dotnet test src/consolidado-service/Consolidado.slnx
+
+# Testes ponta a ponta — sobem Postgres, RabbitMQ e Redis via Testcontainers
+dotnet test src/tests-e2e/Cashflow.E2E.slnx
+```
+
+Os testes E2E não dependem do `docker compose up`: eles sobem a própria
+infraestrutura, aplicam os mesmos arquivos de schema e a mesma topologia de
+broker que o compose usa e hospedam as duas APIs em processo. Só é preciso ter
+um Docker em execução.
+
+> Instruções detalhadas de execução e configuração serão adicionadas conforme o desenvolvimento avança.
 
 ## Documentação
 
