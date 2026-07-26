@@ -113,11 +113,6 @@ public sealed partial class SaldoDiarioRepository(
                 sql, new { comercianteId, data, moeda }, cancellationToken: ct));
         }, cancellationToken);
 
-        if (saldo is not null)
-        {
-            await GravarNoCacheAsync(saldo, cancellationToken);
-        }
-
         return saldo;
     }
 
