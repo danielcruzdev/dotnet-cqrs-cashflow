@@ -38,6 +38,13 @@
     <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
     <AnalysisLevel>latest-recommended</AnalysisLevel>
     <GenerateDocumentationFile>false</GenerateDocumentationFile>
+
+    <!--
+      CA1031 (não capturar Exception genérica) não se aplica aqui: os laços de
+      BackgroundService e o processamento de mensagem precisam sobreviver a
+      qualquer falha, senão o serviço morre no primeiro erro transitório.
+    -->
+    <NoWarn>$(NoWarn);CA1031</NoWarn>
   </PropertyGroup>
 
   <PropertyGroup>

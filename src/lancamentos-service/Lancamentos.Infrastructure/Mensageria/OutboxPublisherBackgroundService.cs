@@ -58,6 +58,7 @@ public sealed partial class OutboxPublisherBackgroundService(
     {
         using var escopo = escopos.CreateScope();
 
+        var sessao = escopo.ServiceProvider.GetRequiredService<SessaoDeBanco>();
         var outbox = escopo.ServiceProvider.GetRequiredService<OutboxRepository>();
         var unitOfWork = escopo.ServiceProvider.GetRequiredService<IUnitOfWork>();
 

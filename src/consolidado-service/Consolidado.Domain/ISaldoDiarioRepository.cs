@@ -13,4 +13,11 @@ public interface ISaldoDiarioRepository
         DateOnly data,
         string moeda,
         CancellationToken cancellationToken = default);
+
+    Task<IReadOnlyList<SaldoDiario>> ListarPeriodoAsync(
+        Guid comercianteId,
+        DateOnly de,
+        DateOnly ate,
+        string moeda,
+        CancellationToken cancellationToken = default);
 }
