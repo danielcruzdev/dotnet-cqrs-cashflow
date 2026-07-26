@@ -54,6 +54,12 @@ public sealed class LancamentoRepository(SessaoDeBanco sessao) : ILancamentoRepo
             throw new ChaveIdempotenciaEmUsoException(
                 lancamento.ComercianteId, lancamento.ChaveIdempotencia, ex);
         }
+        catch (PostgresException ex) 
+        when (ex.SqlState == UniqueViolation
+           && ex.ConstraintName == "uq_lancamento_estorno")
+        {
+            throw DominioException.LancamentoJaEstornado(lancamento.EstornoDeId!.Value);
+        }
     }
 
     public async Task<Lancamento?> ObterPorIdAsync(

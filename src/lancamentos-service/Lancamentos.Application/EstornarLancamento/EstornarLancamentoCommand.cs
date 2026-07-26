@@ -19,6 +19,7 @@ public enum StatusEstorno
     OriginalNaoEncontrado = 2,
     JaEstornado = 3,
     JaRegistrado = 4,
+    ConflitoDeChave = 5
 }
 
 public sealed record ResultadoEstorno(StatusEstorno Status, Lancamento? Estorno);
@@ -36,12 +37,16 @@ public sealed class EstornarLancamentoCommandHandler(
     {
         ArgumentNullException.ThrowIfNull(comando);
 
+        var hashPayload = HashDoEstorno(comando.LancamentoId);
+
         var jaProcessado = await repositorio.ObterPorChaveIdempotenciaAsync(
             comando.ComercianteId, comando.ChaveIdempotencia, cancellationToken);
 
         if (jaProcessado is not null)
         {
-            return new ResultadoEstorno(StatusEstorno.JaRegistrado, jaProcessado);
+            return string.Equals(jaProcessado.HashPayload, hashPayload, StringComparison.OrdinalIgnoreCase)
+                ? new ResultadoEstorno(StatusEstorno.JaRegistrado, jaProcessado)
+                : new ResultadoEstorno(StatusEstorno.ConflitoDeChave, jaProcessado);
         }
 
         var original = await repositorio.ObterPorIdAsync(
@@ -58,10 +63,7 @@ public sealed class EstornarLancamentoCommandHandler(
         }
 
         // Estornar um estorno é recusado pela própria entidade.
-        var estorno = original.Estornar(
-            comando.ChaveIdempotencia,
-            HashDoEstorno(comando.LancamentoId),
-            relogio);
+        var estorno = original.Estornar(comando.ChaveIdempotencia, hashPayload, relogio);
 
         var evento = LancamentoRealizado.De(estorno, comando.CorrelationId);
 

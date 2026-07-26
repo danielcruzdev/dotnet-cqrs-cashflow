@@ -118,6 +118,15 @@ public static class LancamentosEndpoints
                 detail: "Um lançamento só pode ser estornado uma vez.",
                 statusCode: StatusCodes.Status409Conflict),
 
+            StatusEstorno.ConflitoDeChave => TypedResults.Problem(
+                title: "Chave de idempotência já utilizada",
+                detail: "Esta chave já foi usada para outra operação deste comerciante.",
+                statusCode: StatusCodes.Status409Conflict,
+                extensions: new Dictionary<string, object?>
+                {
+                    ["lancamentoExistenteId"] = resultado.Estorno!.Id,
+                }),
+
             _ => throw new InvalidOperationException($"Status não tratado: {resultado.Status}"),
         };
     }

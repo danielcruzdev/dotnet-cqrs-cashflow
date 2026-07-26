@@ -39,4 +39,9 @@ public sealed class DominioException(string codigo, string mensagem) : Exception
     public static DominioException CampoAcimaDoLimite(string campo, int limite) =>
         new("lancamento.campo_acima_do_limite",
             $"O campo '{campo}' excede o limite de {limite} caracteres.");
+
+    public static DominioException LancamentoJaEstornado(Guid lancamentoId) =>
+        new("lancamento.ja_estornado",
+            $"O lançamento {lancamentoId} já possui estorno. Um lançamento só pode " +
+            "ser estornado uma vez.");
 }

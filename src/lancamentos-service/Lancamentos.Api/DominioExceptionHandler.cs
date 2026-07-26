@@ -9,12 +9,6 @@ namespace Lancamentos.Api;
 /// </summary>
 public sealed partial class DominioExceptionHandler(ILogger<DominioExceptionHandler> logger) : IExceptionHandler
 {
-    [LoggerMessage(
-        EventId = 1000,
-        Level = LogLevel.Information,
-        Message = "Regra de negócio violada: {Codigo} — {Mensagem}")]
-    private static partial void LogRegraViolada(ILogger logger, string codigo, string mensagem);
-
     public async ValueTask<bool> TryHandleAsync(
         HttpContext httpContext,
         Exception exception,
@@ -54,6 +48,16 @@ public sealed partial class DominioExceptionHandler(ILogger<DominioExceptionHand
     {
         // Requisição bem formada, regra insatisfazível.
         "lancamento.estorno_de_estorno" => StatusCodes.Status422UnprocessableEntity,
+
+        // O estado do recurso conflita com a operação pedida.
+        "lancamento.ja_estornado" => StatusCodes.Status409Conflict,
+
         _ => StatusCodes.Status400BadRequest,
     };
+
+    [LoggerMessage(
+        EventId = 1000,
+        Level = LogLevel.Information,
+        Message = "Regra de negócio violada: {Codigo} — {Mensagem}")]
+    private static partial void LogRegraViolada(ILogger logger, string codigo, string mensagem);
 }
