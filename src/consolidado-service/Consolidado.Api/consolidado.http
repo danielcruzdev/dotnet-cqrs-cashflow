@@ -1,0 +1,44 @@
+### Consolidado — requisições de exemplo
+### O token é emitido pelo serviço de Lançamentos (porta 5001) e aceito aqui
+### porque os dois validam a mesma chave simétrica. Rode o passo 0 primeiro.
+
+@host = http://localhost:5002
+@auth = http://localhost:5001
+@comerciante = aaaaaaaa-0000-0000-0000-000000000001
+@outroComerciante = bbbbbbbb-0000-0000-0000-000000000002
+@hoje = 2026-07-25
+
+### 0. Emitir token no serviço de Lançamentos — 200 OK
+# @name obterToken
+POST {{auth}}/api/token
+Content-Type: application/json
+
+{
+  "comercianteId": "{{comerciante}}"
+}
+
+###
+@token = {{obterToken.response.body.token}}
+
+### 1. Saldo do dia — 200 com totais e saldo
+GET {{host}}/api/consolidado/{{comerciante}}/{{hoje}}?moeda=BRL
+Authorization: Bearer {{token}}
+
+### 2. Dia sem lançamentos — 200 com zeros e atualizadoEm null
+GET {{host}}/api/consolidado/{{comerciante}}/2020-01-01
+Authorization: Bearer {{token}}
+
+### 3. Relatório por período — 200
+GET {{host}}/api/consolidado/{{comerciante}}?de=2026-07-01&ate=2026-07-31
+Authorization: Bearer {{token}}
+
+### 4. Período acima de 90 dias — 400, código consulta.periodo_muito_longo
+GET {{host}}/api/consolidado/{{comerciante}}?de=2026-01-01&ate=2026-07-31
+Authorization: Bearer {{token}}
+
+### 5. Sem token — 401 Unauthorized
+GET {{host}}/api/consolidado/{{comerciante}}/{{hoje}}
+
+### 6. Token válido, OUTRO comerciante — 403 Forbidden (IDOR barrado)
+GET {{host}}/api/consolidado/{{outroComerciante}}/{{hoje}}
+Authorization: Bearer {{token}}

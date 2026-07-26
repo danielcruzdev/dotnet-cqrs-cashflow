@@ -1,15 +1,30 @@
 ### Lançamentos — requisições de exemplo
 ### Abra no VS Code (extensão REST Client), Visual Studio ou Rider e clique em "Send Request".
 ### Substitui o Swagger, removido por incompatibilidade de versão no pacote de OpenAPI.
+### Rode o passo 0 primeiro: todos os demais usam o token que ele devolve.
 
 @host = http://localhost:5001
 @comerciante = aaaaaaaa-0000-0000-0000-000000000001
+@outroComerciante = bbbbbbbb-0000-0000-0000-000000000002
 @hoje = 2026-07-25
+
+### 0. Emitir token do comerciante — 200 OK
+# @name obterToken
+POST {{host}}/api/token
+Content-Type: application/json
+
+{
+  "comercianteId": "{{comerciante}}"
+}
+
+###
+@token = {{obterToken.response.body.token}}
 
 ### 1. Registrar um crédito — 201 Created
 # @name criar
 POST {{host}}/api/lancamentos
 Content-Type: application/json
+Authorization: Bearer {{token}}
 Idempotency-Key: ped-1
 X-Correlation-Id: 7c9e6679-7425-40de-944b-e07fc1f90ae7
 
@@ -25,6 +40,7 @@ X-Correlation-Id: 7c9e6679-7425-40de-944b-e07fc1f90ae7
 ### 2. Repetir a MESMA chave com o MESMO payload — 200 OK, mesmo id
 POST {{host}}/api/lancamentos
 Content-Type: application/json
+Authorization: Bearer {{token}}
 Idempotency-Key: ped-1
 
 {
@@ -39,6 +55,7 @@ Idempotency-Key: ped-1
 ### 3. Mesma chave com payload DIFERENTE — 409 Conflict
 POST {{host}}/api/lancamentos
 Content-Type: application/json
+Authorization: Bearer {{token}}
 Idempotency-Key: ped-1
 
 {
@@ -52,6 +69,7 @@ Idempotency-Key: ped-1
 ### 4. Sem Idempotency-Key — 400 Bad Request
 POST {{host}}/api/lancamentos
 Content-Type: application/json
+Authorization: Bearer {{token}}
 
 {
   "comercianteId": "{{comerciante}}",
@@ -64,6 +82,7 @@ Content-Type: application/json
 ### 5. Valor negativo — 400, código lancamento.valor_nao_positivo
 POST {{host}}/api/lancamentos
 Content-Type: application/json
+Authorization: Bearer {{token}}
 Idempotency-Key: neg-1
 
 {
@@ -77,6 +96,7 @@ Idempotency-Key: neg-1
 ### 6. Valor com 3 casas decimais — 400, código lancamento.precisao_invalida
 POST {{host}}/api/lancamentos
 Content-Type: application/json
+Authorization: Bearer {{token}}
 Idempotency-Key: prec-1
 
 {
@@ -90,6 +110,7 @@ Idempotency-Key: prec-1
 ### 7. Data de competência futura — 400, código lancamento.data_competencia_futura
 POST {{host}}/api/lancamentos
 Content-Type: application/json
+Authorization: Bearer {{token}}
 Idempotency-Key: fut-1
 
 {
@@ -103,6 +124,7 @@ Idempotency-Key: fut-1
 ### 8. Moeda de zero casas decimais — 400, código lancamento.moeda_nao_suportada
 POST {{host}}/api/lancamentos
 Content-Type: application/json
+Authorization: Bearer {{token}}
 Idempotency-Key: jpy-1
 
 {
@@ -116,6 +138,7 @@ Idempotency-Key: jpy-1
 ### 9. Débito, para o saldo do dia ficar misto
 POST {{host}}/api/lancamentos
 Content-Type: application/json
+Authorization: Bearer {{token}}
 Idempotency-Key: ped-2
 
 {
@@ -129,26 +152,40 @@ Idempotency-Key: ped-2
 
 ### 10. Consultar por id — 200
 GET {{host}}/api/lancamentos/{{criar.response.body.id}}?comercianteId={{comerciante}}
+Authorization: Bearer {{token}}
 
 ### 11. Listar o período — 200 com metadados de paginação
 GET {{host}}/api/lancamentos?comercianteId={{comerciante}}&dataInicio=2026-07-01&dataFim=2026-07-31&pagina=1&tamanhoPagina=50
+Authorization: Bearer {{token}}
 
 ### 12. Período invertido — 400, código consulta.periodo_invalido
 GET {{host}}/api/lancamentos?comercianteId={{comerciante}}&dataInicio=2026-07-31&dataFim=2026-07-01
+Authorization: Bearer {{token}}
 
 ### 13. Estornar o lançamento do passo 1 — 201, tipo invertido para DEBITO
 # @name estornar
 POST {{host}}/api/lancamentos/{{criar.response.body.id}}/estorno?comercianteId={{comerciante}}
+Authorization: Bearer {{token}}
 Idempotency-Key: est-1
 
 ### 14. Estornar o mesmo lançamento de novo — 409 Conflict
 POST {{host}}/api/lancamentos/{{criar.response.body.id}}/estorno?comercianteId={{comerciante}}
+Authorization: Bearer {{token}}
 Idempotency-Key: est-2
 
 ### 15. Estornar um estorno — 422 Unprocessable Entity
 POST {{host}}/api/lancamentos/{{estornar.response.body.id}}/estorno?comercianteId={{comerciante}}
+Authorization: Bearer {{token}}
 Idempotency-Key: est-3
 
 ### 16. Estornar lançamento inexistente — 404 Not Found
 POST {{host}}/api/lancamentos/99999999-9999-4999-8999-999999999999/estorno?comercianteId={{comerciante}}
+Authorization: Bearer {{token}}
 Idempotency-Key: est-4
+
+### 17. Sem token — 401 Unauthorized
+GET {{host}}/api/lancamentos?comercianteId={{comerciante}}&dataInicio=2026-07-01&dataFim=2026-07-31
+
+### 18. Token válido, OUTRO comerciante — 403 Forbidden (IDOR barrado)
+GET {{host}}/api/lancamentos?comercianteId={{outroComerciante}}&dataInicio=2026-07-01&dataFim=2026-07-31
+Authorization: Bearer {{token}}

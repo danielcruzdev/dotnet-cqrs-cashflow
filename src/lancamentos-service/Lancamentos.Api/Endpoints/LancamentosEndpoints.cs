@@ -1,3 +1,4 @@
+using System.Security.Claims;
 using Lancamentos.Api.Contratos;
 using Lancamentos.Application.Abstracoes;
 using Lancamentos.Application.ConsultarLancamentos;
@@ -15,7 +16,9 @@ public static class LancamentosEndpoints
 
     public static IEndpointRouteBuilder MapearLancamentos(this IEndpointRouteBuilder app)
     {
-        var grupo = app.MapGroup("/api/lancamentos").WithTags("Lançamentos");
+        var grupo = app.MapGroup("/api/lancamentos")
+            .WithTags("Lançamentos")
+            .RequireAuthorization();
 
         grupo.MapPost("/", CriarAsync)
             .WithName("CriarLancamento")
@@ -42,6 +45,11 @@ public static class LancamentosEndpoints
         [FromServices] ICommandHandler<CriarLancamentoCommand, ResultadoCriarLancamento> handler,
         CancellationToken cancellationToken)
     {
+        if (!contexto.User.EhDono(request.ComercianteId))
+        {
+            return Autorizacao.AcessoNegado();
+        }
+
         if (!TentarObterChaveIdempotencia(contexto, out var chave))
         {
             return ChaveIdempotenciaAusente();
@@ -86,6 +94,11 @@ public static class LancamentosEndpoints
         [FromServices] ICommandHandler<EstornarLancamentoCommand, ResultadoEstorno> handler,
         CancellationToken cancellationToken)
     {
+        if (!contexto.User.EhDono(comercianteId))
+        {
+            return Autorizacao.AcessoNegado();
+        }
+
         if (!TentarObterChaveIdempotencia(contexto, out var chave))
         {
             return ChaveIdempotenciaAusente();
@@ -131,15 +144,21 @@ public static class LancamentosEndpoints
         };
     }
 
-    private static async Task<Ok<PaginaResponse<LancamentoResponse>>> ListarAsync(
+    private static async Task<Results<Ok<PaginaResponse<LancamentoResponse>>, ProblemHttpResult>> ListarAsync(
         [FromQuery] Guid comercianteId,
         [FromQuery] DateOnly dataInicio,
         [FromQuery] DateOnly dataFim,
+        ClaimsPrincipal usuario,
         [FromServices] IQueryHandler<ListarLancamentosQuery, PaginaDeLancamentos> handler,
         CancellationToken cancellationToken,
         [FromQuery] int pagina = 1,
         [FromQuery] int tamanhoPagina = ListarLancamentosQuery.TamanhoPaginaPadrao)
     {
+        if (!usuario.EhDono(comercianteId))
+        {
+            return Autorizacao.AcessoNegado();
+        }
+
         var resultado = await handler.ExecutarAsync(new ListarLancamentosQuery
         {
             ComercianteId = comercianteId,
@@ -159,12 +178,18 @@ public static class LancamentosEndpoints
         });
     }
 
-    private static async Task<Results<Ok<LancamentoResponse>, NotFound>> ObterAsync(
+    private static async Task<Results<Ok<LancamentoResponse>, NotFound, ProblemHttpResult>> ObterAsync(
         Guid id,
         [FromQuery] Guid comercianteId,
+        ClaimsPrincipal usuario,
         [FromServices] IQueryHandler<ObterLancamentoPorIdQuery, Domain.Lancamento?> handler,
         CancellationToken cancellationToken)
     {
+        if (!usuario.EhDono(comercianteId))
+        {
+            return Autorizacao.AcessoNegado();
+        }
+
         var lancamento = await handler.ExecutarAsync(
             new ObterLancamentoPorIdQuery(comercianteId, id), cancellationToken);
 
