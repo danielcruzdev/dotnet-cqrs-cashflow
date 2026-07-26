@@ -185,46 +185,105 @@ referência de API não faz.
 
 ## Roteiro de 2 minutos
 
-**1. Obter um token.** O emissor local vive no serviço de Lançamentos.
+Três caminhos para a mesma coisa — escolha um. Os números esperados assumem um
+ambiente recém-subido, com os bancos vazios.
+
+### Pelo navegador, sem copiar nada
+
+Abra a referência de API do serviço de Lançamentos em
+**http://localhost:5001/scalar**, chame o `POST /api/token` (é anônimo), copie o
+campo `token` da resposta e cole no painel de autenticação. A partir daí todos os
+endpoints ficam clicáveis, aqui e em
+**http://localhost:5002/scalar**.
+
+### Pelo PowerShell (Windows)
+
+Um bloco só, do token ao `403`:
+
+```powershell
+$comerciante = '11111111-1111-1111-1111-111111111111'
+$hoje = [DateTime]::UtcNow.AddHours(-3).ToString('yyyy-MM-dd')   # dia contábil em UTC-3
+
+# 1. token
+$token = (Invoke-RestMethod -Method Post http://localhost:5001/api/token `
+    -ContentType 'application/json' `
+    -Body "{`"comercianteId`":`"$comerciante`"}").token
+$auth = @{ Authorization = "Bearer $token" }
+
+# 2. crédito de 700,00
+$credito = "{`"comercianteId`":`"$comerciante`",`"tipo`":`"CREDITO`",`"valor`":700.00,`"moeda`":`"BRL`",`"dataCompetencia`":`"$hoje`",`"descricao`":`"Venda balcao`"}"
+$r = Invoke-WebRequest -Method Post http://localhost:5001/api/lancamentos -UseBasicParsing `
+    -Headers ($auth + @{ 'Idempotency-Key' = 'venda-001' }) `
+    -ContentType 'application/json' -Body $credito
+"$($r.StatusCode) -> $($r.Headers['Location'] | Select-Object -First 1)"
+
+# 3. exatamente a mesma requisição de novo
+$r = Invoke-WebRequest -Method Post http://localhost:5001/api/lancamentos -UseBasicParsing `
+    -Headers ($auth + @{ 'Idempotency-Key' = 'venda-001' }) `
+    -ContentType 'application/json' -Body $credito
+"$($r.StatusCode) -> nada foi criado"
+
+# 4. débito de 320,50 e saldo consolidado
+$debito = "{`"comercianteId`":`"$comerciante`",`"tipo`":`"DEBITO`",`"valor`":320.50,`"moeda`":`"BRL`",`"dataCompetencia`":`"$hoje`"}"
+Invoke-RestMethod -Method Post http://localhost:5001/api/lancamentos `
+    -Headers ($auth + @{ 'Idempotency-Key' = 'despesa-001' }) `
+    -ContentType 'application/json' -Body $debito | Out-Null
+
+Start-Sleep 3   # consistência eventual: SLO de lag p95 < 5 s
+Invoke-RestMethod "http://localhost:5002/api/consolidado/$comerciante/$hoje" -Headers $auth |
+    ConvertTo-Json
+
+# 5. o caixa de outro comerciante, com o mesmo token
+try   { Invoke-RestMethod "http://localhost:5002/api/consolidado/22222222-2222-2222-2222-222222222222/$hoje" -Headers $auth }
+catch { "403 -> autorizacao por recurso" }
+```
+
+### Pelo bash (Linux, macOS, WSL, Git Bash)
 
 ```bash
 COMERCIANTE=11111111-1111-1111-1111-111111111111
+HOJE=$(TZ=America/Sao_Paulo date +%F)   # dia contábil do comerciante
 
+# 1. token
 TOKEN=$(curl -s -X POST http://localhost:5001/api/token \
   -H 'Content-Type: application/json' \
   -d "{\"comercianteId\":\"$COMERCIANTE\"}" | sed -E 's/.*"token":"([^"]+)".*/\1/')
-```
 
-**2. Registrar um crédito.**
+CREDITO="{\"comercianteId\":\"$COMERCIANTE\",\"tipo\":\"CREDITO\",\"valor\":700.00,\"moeda\":\"BRL\",\"dataCompetencia\":\"$HOJE\",\"descricao\":\"Venda balcao\"}"
 
-```bash
-curl -i -X POST http://localhost:5001/api/lancamentos \
-  -H "Authorization: Bearer $TOKEN" \
-  -H 'Content-Type: application/json' \
-  -H 'Idempotency-Key: venda-001' \
-  -d "{\"comercianteId\":\"$COMERCIANTE\",\"tipo\":\"CREDITO\",\"valor\":700.00,\"moeda\":\"BRL\",\"dataCompetencia\":\"$(date +%F)\",\"descricao\":\"Venda balcão\"}"
-```
+# 2. crédito de 700,00
+curl -s -D - -o /dev/null -X POST http://localhost:5001/api/lancamentos \
+  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -H 'Idempotency-Key: venda-001' -d "$CREDITO" | grep -iE '^HTTP|^location'
 
-→ `201 Created` com `Location` para o recurso.
+# 3. exatamente a mesma requisição de novo
+curl -s -o /dev/null -w '%{http_code} -> nada foi criado\n' -X POST http://localhost:5001/api/lancamentos \
+  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -H 'Idempotency-Key: venda-001' -d "$CREDITO"
 
-**3. Repetir exatamente a mesma requisição.**
-
-→ `200 OK` com **o mesmo** lançamento. Nada foi criado. Trocar o valor mantendo
-a chave devolve `409 Conflict`.
-
-**4. Registrar um débito e consultar o saldo.**
-
-```bash
-curl -s -X POST http://localhost:5001/api/lancamentos \
+# 4. débito de 320,50 e saldo consolidado
+curl -s -o /dev/null -X POST http://localhost:5001/api/lancamentos \
   -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
   -H 'Idempotency-Key: despesa-001' \
-  -d "{\"comercianteId\":\"$COMERCIANTE\",\"tipo\":\"DEBITO\",\"valor\":320.50,\"moeda\":\"BRL\",\"dataCompetencia\":\"$(date +%F)\"}" > /dev/null
+  -d "{\"comercianteId\":\"$COMERCIANTE\",\"tipo\":\"DEBITO\",\"valor\":320.50,\"moeda\":\"BRL\",\"dataCompetencia\":\"$HOJE\"}"
 
 sleep 3   # consistência eventual: SLO de lag p95 < 5 s
+curl -s "http://localhost:5002/api/consolidado/$COMERCIANTE/$HOJE" -H "Authorization: Bearer $TOKEN"; echo
 
-curl -s "http://localhost:5002/api/consolidado/$COMERCIANTE/$(date +%F)" \
+# 5. o caixa de outro comerciante, com o mesmo token
+curl -s -o /dev/null -w '%{http_code} -> autorizacao por recurso\n' \
+  "http://localhost:5002/api/consolidado/22222222-2222-2222-2222-222222222222/$HOJE" \
   -H "Authorization: Bearer $TOKEN"
 ```
+
+### O que observar na saída
+
+| Passo | Esperado | Por quê |
+|---|---|---|
+| 2 | `201` com `Location` | o `Location` inclui `?comercianteId=` e responde `200` se você seguir |
+| 3 | `200`, não `201` | mesma `Idempotency-Key` e mesmo payload: nada foi criado, e volta **o mesmo** lançamento. Trocar o valor mantendo a chave devolve `409 Conflict` |
+| 4 | o saldo abaixo | a projeção é assíncrona; o `sleep` existe porque a consistência é eventual, com SLO de lag p95 < 5 s |
+| 5 | `403 Forbidden` | é a autorização por recurso. Sem ela, qualquer portador de token válido leria o caixa de qualquer comerciante |
 
 ```json
 {
@@ -235,10 +294,6 @@ curl -s "http://localhost:5002/api/consolidado/$COMERCIANTE/$(date +%F)" \
   "atualizadoEm": "2026-07-26T22:14:03.118+00:00"
 }
 ```
-
-**5. Tentar ler o saldo de outro comerciante** com o mesmo token → `403
-Forbidden`. É a autorização por recurso, sem a qual qualquer portador de token
-válido leria o caixa de qualquer um.
 
 ### Endpoints
 
