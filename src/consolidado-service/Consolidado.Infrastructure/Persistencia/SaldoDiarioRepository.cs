@@ -2,15 +2,17 @@ using System.Text.Json;
 using Consolidado.Domain;
 using Dapper;
 using Microsoft.Extensions.Caching.Distributed;
+using Microsoft.Extensions.Logging;
 using Npgsql;
 using Polly;
 
 namespace Consolidado.Infrastructure.Persistencia;
 
-public sealed class SaldoDiarioRepository(
+public sealed partial class SaldoDiarioRepository(
     NpgsqlDataSource dataSource,
     IDistributedCache cache,
-    ResiliencePipeline resiliencia) : ISaldoDiarioRepository
+    ResiliencePipeline resiliencia,
+    ILogger<SaldoDiarioRepository> logger) : ISaldoDiarioRepository
 {
     private static readonly TimeZoneInfo FusoComerciante =
         TimeZoneInfo.FindSystemTimeZoneById("America/Sao_Paulo");
@@ -90,12 +92,11 @@ public sealed class SaldoDiarioRepository(
         string moeda,
         CancellationToken cancellationToken = default)
     {
-        var chave = Chave(comercianteId, data, moeda);
-        var doCache = await cache.GetStringAsync(chave, cancellationToken);
+        var doCache = await LerDoCacheAsync(Chave(comercianteId, data, moeda), cancellationToken);
 
         if (doCache is not null)
         {
-            return JsonSerializer.Deserialize<SaldoDiario>(doCache, Json);
+            return doCache;
         }
 
         var sql = $"""
@@ -149,7 +150,22 @@ public sealed class SaldoDiarioRepository(
         return [.. linhas];
     }
 
-    private Task GravarNoCacheAsync(SaldoDiario saldo, CancellationToken cancellationToken)
+    private async Task<SaldoDiario?> LerDoCacheAsync(string chave, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var json = await cache.GetStringAsync(chave, cancellationToken);
+
+            return json is null ? null : JsonSerializer.Deserialize<SaldoDiario>(json, Json);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            LogCacheIndisponivel(logger, ex);
+            return null;
+        }
+    }
+
+    private async Task GravarNoCacheAsync(SaldoDiario saldo, CancellationToken cancellationToken)
     {
         // Dia passado muda pouco, mas não é imutável: lançamento retroativo e
         // estorno de dia antigo são permitidos.
@@ -158,13 +174,24 @@ public sealed class SaldoDiarioRepository(
 
         var ttl = saldo.Data >= hoje ? TimeSpan.FromSeconds(5) : TimeSpan.FromMinutes(5);
 
-        return cache.SetStringAsync(
-            Chave(saldo.ComercianteId, saldo.Data, saldo.Moeda),
-            JsonSerializer.Serialize(saldo, Json),
-            new DistributedCacheEntryOptions { AbsoluteExpirationRelativeToNow = ttl },
-            cancellationToken);
+        try
+        {
+            await cache.SetStringAsync(
+                Chave(saldo.ComercianteId, saldo.Data, saldo.Moeda),
+                JsonSerializer.Serialize(saldo, Json),
+                new DistributedCacheEntryOptions { AbsoluteExpirationRelativeToNow = ttl },
+                cancellationToken);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            LogCacheIndisponivel(logger, ex);
+        }
     }
 
     private static string Chave(Guid comercianteId, DateOnly data, string moeda) =>
         $"consolidado:{comercianteId}:{moeda}:{data:yyyy-MM-dd}";
+
+    [LoggerMessage(EventId = 3100, Level = LogLevel.Warning,
+        Message = "Cache indisponível; seguindo direto para o banco")]
+    private static partial void LogCacheIndisponivel(ILogger logger, Exception excecao);
 }
