@@ -19,9 +19,10 @@ que importar o pacote que o implementa.
 Interfaces próprias na camada Application:
 
 ```csharp
-public interface ICommandHandler<in TComando, TResultado>
+public interface ICommandHandler<in TCommand, TResultado>
+    where TCommand : ICommand<TResultado>
 {
-    Task<TResultado> ExecutarAsync(TComando comando, CancellationToken cancellationToken = default);
+    Task<TResultado> ExecutarAsync(TCommand comando, CancellationToken cancellationToken = default);
 }
 ```
 

@@ -139,7 +139,15 @@ são imediatas.
 | `lancamentos_db` | `localhost:5432` — `cashflow` / `cashflow_dev` |
 | `consolidado_db` | `localhost:5433` — `cashflow` / `cashflow_dev` |
 
-Verificação rápida de que subiu:
+> **Se alguma porta já estiver ocupada** (5432 e 6379 são as suspeitas de
+> sempre numa máquina de desenvolvimento), todas as portas publicadas aceitam
+> override por variável de ambiente, sem editar o compose:
+> `LANCAMENTOS_DB_PORT`, `CONSOLIDADO_DB_PORT`, `RABBITMQ_PORT`,
+> `RABBITMQ_UI_PORT`, `REDIS_PORT`, `LANCAMENTOS_PORT`, `CONSOLIDADO_PORT`.
+> Ex.: `LANCAMENTOS_DB_PORT=15432 docker compose up --build`.
+
+Verificação rápida de que subiu (os contêineres ficam `started` alguns segundos
+antes de o Kestrel aceitar conexão — se der *connection refused*, repita):
 
 ```bash
 curl http://localhost:5001/health/ready
@@ -205,7 +213,7 @@ curl -s "http://localhost:5002/api/consolidado/$COMERCIANTE/$(date +%F)" \
   "data": "2026-07-26", "moeda": "BRL",
   "totalDebitos": 320.50, "totalCreditos": 700.00,
   "saldo": 379.50, "qtdLancamentos": 2,
-  "atualizadoEm": "2026-07-26T22:14:03.118Z"
+  "atualizadoEm": "2026-07-26T22:14:03.118+00:00"
 }
 ```
 
@@ -226,10 +234,13 @@ válido leria o caixa de qualquer um.
 | `GET` | `/api/consolidado/{comercianteId}?de=&ate=&moeda=BRL` | Consolidado — máx. 90 dias |
 | `GET` | `/health/live`, `/health/ready` | ambos — anônimos |
 
-O `comercianteId` aparece na rota ou na query string de todos os endpoints de
-negócio, e é sempre conferido contra a claim do token — é a checagem que fecha o
-IDOR. Erros seguem `ProblemDetails` (RFC 7807) e trazem um `codigo` estável como
-extensão, para o cliente ramificar sem fazer parse de mensagem.
+O `comercianteId` aparece na rota, na query string ou no corpo de todos os
+endpoints de negócio, e é sempre conferido contra a claim do token — é a
+checagem que fecha o IDOR. Erros seguem `ProblemDetails` (RFC 7807); os que
+nascem de regra de domínio, de consulta inválida e de autorização trazem um
+`codigo` estável como extensão, para o cliente ramificar sem fazer parse de
+mensagem. Os conflitos de idempotência trazem `lancamentoExistenteId`, que é o
+dado de que o cliente precisa para reconciliar.
 
 ---
 
@@ -248,7 +259,7 @@ Os testes E2E **não dependem do `docker compose up`**: a fixture sobe os quatro
 contêineres por conta própria e aplica os **mesmos** `01-schema.sql` e
 `definitions.json` que o compose usa — se o teste tivesse schema próprio,
 passaria descrevendo um ambiente que não existe. Basta ter um Docker rodando. A
-primeira execução baixa quatro imagens.
+primeira execução baixa três imagens.
 
 | O que é provado | Teste |
 |---|---|
@@ -385,7 +396,7 @@ análise de capacidade em [`docs/slos.md`](docs/slos.md).
 |---|---|---|---|
 | API do Consolidado fora | **nenhum impacto** | consultas indisponíveis | requisito âncora garantido por design; readiness independente |
 | Consumer fora | **nenhum impacto** | saldo congela no último evento | fila durável acumula; converge ao voltar (RPO 0) |
-| `consolidado_db` fora | **nenhum impacto** | cache até o TTL, depois `503` | circuit breaker + cache, dentro do error budget |
+| `consolidado_db` fora | **nenhum impacto** | cache até o TTL, depois `504` no timeout e `503` quando o circuito abre | circuit breaker + cache, dentro do error budget |
 | RabbitMQ fora | **nenhum impacto** | saldo congela | outbox retém e republica ao voltar |
 | Redis fora | **nenhum impacto** | consultas mais lentas | degrada para o banco com log de `Warning`; fora do readiness |
 | **`lancamentos_db` fora** | **serviço indisponível** ⚠️ | nenhum imediato | **SPOF assumido** — mitigação real é réplica com failover, fora do escopo |
@@ -421,11 +432,13 @@ liveness derruba contêiner, readiness só desvia tráfego.
   (não pelo IP, que colapsaria todos os clientes atrás de um NAT numa partição
   só). Limitar a escrita contradiz o requisito âncora — o serviço de lançamentos
   existe para continuar aceitando.
-- **CORS deny-by-default**, com a lista de origens vazia em configuração:
-  liberar um front-end é uma linha de `appsettings`, não uma decisão
-  redescoberta no meio de um incidente.
+- **CORS deny-by-default no Consolidado**, com a lista de origens vazia em
+  configuração: liberar um front-end é uma linha de `appsettings`, não uma
+  decisão redescoberta no meio de um incidente. O Lançamentos não expõe CORS
+  porque não é chamado de navegador — quem escreve no caixa é servidor.
 - **Security headers** (`X-Content-Type-Options`, `X-Frame-Options`,
-  `Referrer-Policy`) e `ProblemDetails` sem stack trace.
+  `Referrer-Policy`) no Consolidado, pela mesma razão, e `ProblemDetails` sem
+  stack trace nos dois.
 - **Injeção de SQL eliminada por construção**: todo acesso é por consulta
   parametrizada no Dapper, sem concatenação.
 - **Limite de superfície**: período consultável limitado a 90 dias e tamanho de
@@ -516,9 +529,12 @@ escalar o consumo junto.
 ```
 
 Cada serviço segue a mesma regra de dependência: `Domain` no centro, sem
-referência a projeto nem a pacote NuGet; `Application` e `Infrastructure`
-dependendo só dele; e a `Api` conhecendo `Infrastructure` **exclusivamente no
-`Program.cs`**, que é a composition root.
+referência a projeto nem a pacote NuGet; `Application` dependendo só dele; e a
+`Api` conhecendo `Infrastructure` **exclusivamente no `Program.cs`**, que é a
+composition root. A `Infrastructure` referencia também a `Application`, num
+único arquivo (`DependencyInjection.cs`): é ela que registra os handlers no
+contêiner, para o `Program.cs` ter uma chamada só. A alternativa seria um
+terceiro módulo de composição, que a esta escala seria cerimônia.
 
 ---
 

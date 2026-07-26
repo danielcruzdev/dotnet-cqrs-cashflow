@@ -41,7 +41,7 @@ com regra de compatibilidade, payload compacto. Descartado porque exige um
 componente a mais (o registry) e porque, com um consumidor e um tipo de evento,
 o contrato é revisado por leitura e coberto pelo teste ponta a ponta.
 
-O ganho de tamanho seria real mas irrelevante: o evento tem ~400 bytes em JSON,
+O ganho de tamanho seria real mas irrelevante: o evento tem ~500 bytes em JSON,
 e o volume de escrita é de dezenas a centenas por comerciante por dia.
 
 **MessagePack / CBOR.** Compactam sem exigir registry, mas perdem justamente o
@@ -59,8 +59,10 @@ estável para ramificar, em vez de parse de mensagem.
 **Negativas, assumidas.** Sem contrato gerado, a compatibilidade entre produtor
 e consumidor depende de revisão e de teste, não do compilador. A mitigação é
 dupla: o contrato do evento é **copiado** nos dois serviços em vez de
-compartilhado por biblioteca (o que permite evoluir um lado por vez, com
-versionamento na routing key), e o consumidor valida o payload antes de aplicar.
+compartilhado por biblioteca (o que permite evoluir um lado por vez, com a
+versão carimbada na routing key e no envelope — ver a ressalva sobre o binding
+curinga no [ADR 0002](0002-comunicacao-assincrona-via-broker.md)), e o
+consumidor valida o payload antes de aplicar.
 Um evento malformado vai para a DLQ em vez de contaminar a projeção.
 
 **Nota:** OpenAPI/Swagger ficou fora desta entrega. O pacote

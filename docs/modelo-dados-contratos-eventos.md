@@ -120,14 +120,19 @@ O publisher roda como `BackgroundService` e o serviço escala horizontalmente. S
 SELECT id, tipo_evento, payload
 FROM outbox_messages
 WHERE processado_em IS NULL
+  AND tentativas < @maximoTentativas
 ORDER BY criado_em
 FOR UPDATE SKIP LOCKED
-LIMIT 100;
+LIMIT @tamanhoLote;
 ```
+
+O lote é configurável (`RabbitMq:TamanhoLote`, default **50**) e o filtro por
+`tentativas` é o que tira a mensagem envenenada da fila de trabalho sem
+apagá-la.
 
 `SKIP LOCKED` faz cada réplica pegar um lote disjunto sem bloquear as outras. É a forma canônica de transformar uma tabela em fila de trabalho no Postgres.
 
-A coluna `tentativas` sustenta a política de retry do publisher: incrementa a cada falha de publicação e o backoff cresce com ela. Acima de um limite (ex.: 10), a linha é marcada como envenenada e sai do lote normal — caso contrário, uma única mensagem impublicável trava a ordem de tudo que vem depois. É o equivalente da DLQ, do lado do produtor.
+A coluna `tentativas` sustenta a política de retry do publisher: incrementa a cada falha de publicação da mensagem e, ao atingir o teto (`OutboxRepository.MaximoTentativas` = 10), a linha deixa de ser selecionada — caso contrário, uma única mensagem impublicável travaria a ordem de tudo que vem depois. É o equivalente da DLQ, do lado do produtor. O **backoff é outra coisa**: ele cresce com as falhas consecutivas do *ciclo* do publisher (tipicamente broker fora do ar), não com a coluna `tentativas`. Backoff por mensagem individual exigiria uma coluna `proxima_tentativa_em`, registrada como evolução futura.
 
 ### 2.2 Retenção da outbox = caminho de recuperação
 
@@ -194,17 +199,22 @@ INSERT INTO saldo_diario (comerciante_id, data, moeda,
                           total_debitos, total_creditos, saldo,
                           qtd_lancamentos, atualizado_em)
 VALUES (@comercianteId, @data, @moeda,
-        CASE WHEN @tipo = 'DEBITO'  THEN @valor ELSE 0 END,
-        CASE WHEN @tipo = 'CREDITO' THEN @valor ELSE 0 END,
-        CASE WHEN @tipo = 'CREDITO' THEN @valor ELSE -@valor END,
+        @debito, @credito, @saldo,
         1, now())
 ON CONFLICT (comerciante_id, data, moeda) DO UPDATE SET
     total_debitos   = saldo_diario.total_debitos  + EXCLUDED.total_debitos,
     total_creditos  = saldo_diario.total_creditos + EXCLUDED.total_creditos,
     saldo           = saldo_diario.saldo + EXCLUDED.saldo,
     qtd_lancamentos = saldo_diario.qtd_lancamentos + 1,
-    atualizado_em   = now();
+    atualizado_em   = now()
+RETURNING total_debitos, total_creditos, saldo, qtd_lancamentos, atualizado_em;
 ```
+
+Dois detalhes da implementação real. Os três parâmetros `@debito`, `@credito` e
+`@saldo` são derivados do tipo em C# (`Movimento.De`), não por `CASE WHEN` no
+SQL: a regra de que débito subtrai é de domínio e fica testável sem banco. E o
+`RETURNING` evita um `SELECT` depois do `UPSERT` — o consumer já sai da mesma
+ida ao banco com o saldo consolidado que vai gravar no cache.
 
 Um `UPSERT` (`INSERT ... ON CONFLICT`) só — sem "ler saldo atual, somar em memória, gravar de volta". Isso evita race condition entre consumers concorrentes sem precisar de lock explícito.
 
@@ -241,7 +251,7 @@ Publicado pela Outbox do serviço de Lançamentos, consumido pelo Consolidado.
 - **Exchange:** `lancamentos.events` (tipo `topic`)
 - **Routing key:** `lancamento.realizado.v1`
 - **Fila do consumidor:** `consolidado.lancamento-realizado` (durável)
-- **Dead-letter exchange:** `lancamentos.events.dlx` → fila `consolidado.lancamento-realizado.dlq` (após N tentativas de reprocessamento)
+- **Dead-letter exchange:** `lancamentos.events.dlx` → fila `consolidado.lancamento-realizado.dlq`. O `nack` sem requeue acontece na **primeira** entrega, e só para payload que não melhora sozinho (malformado ou inválido). Falha de ambiente — banco fora do ar — usa `nack` **com** requeue, e a mensagem volta para a fila. Não há teto de reentregas nesta versão: é dívida conhecida, registrada no [runbook](runbook.md)
 - **Garantia:** at-least-once. Publisher confirms no lado do produtor, `ack` manual após commit no lado do consumidor.
 
 ```json
@@ -249,7 +259,7 @@ Publicado pela Outbox do serviço de Lançamentos, consumido pelo Consolidado.
   "eventId": "b2a1e2d0-1234-4a5b-9c3d-abcdef123456",
   "version": 1,
   "eventType": "LancamentoRealizado",
-  "occurredAt": "2026-07-24T14:32:10Z",
+  "occurredAt": "2026-07-24T14:32:10.115+00:00",
   "correlationId": "7c9e6679-7425-40de-944b-e07fc1f90ae7",
   "agregadoId": "f47ac10b-58cc-4372-a567-0e02b2c3d479",
   "comercianteId": "9e107d9d-372b-4c14-b1c1-9e1a2f0f1a11",
@@ -314,7 +324,7 @@ Header obrigatório: `Idempotency-Key: <guid>` — protege contra duplo clique /
 }
 ```
 
-A validação nativa de Minimal APIs do .NET 10 (`AddValidation()`, baseada em DataAnnotations) cobre o que é formato: `valor > 0` via `[Range]`, `tipo` ∈ {DEBITO, CREDITO} via `[AllowedValues]`, campos obrigatórios e tamanho. A validação de **moeda ISO 4217 não é nativa** — exige um `ValidationAttribute` customizado, porque não existe atributo pronto para isso.
+A validação nativa de Minimal APIs do .NET 10 (`AddValidation()`, baseada em DataAnnotations) cobre o que é formato: `valor > 0` via `[Range]`, `tipo` ∈ {DEBITO, CREDITO} via `[AllowedValues]`, campos obrigatórios e tamanho. A validação de **moeda ISO 4217 não é nativa** — não existe atributo pronto para isso. O DTO valida só o formato (`[StringLength(3, MinimumLength = 3)]`) e a allowlist de moedas suportadas fica no VO `Moeda`, do domínio: é regra de negócio, não de formato, e é o domínio que decide o que o sistema sabe tratar.
 
 A regra `dataCompetencia <= hoje` não é validação de formato e sim de **domínio**: depende do fuso do comerciante (§1.1) e fica como Guard Clause na entidade, não como anotação no DTO. Retorno de erro em ambos os casos: `400` com `ProblemDetails` padrão.
 
@@ -331,9 +341,9 @@ O caso de `409` importa: devolver silenciosamente o recurso antigo quando o clie
 
 Distinguir os dois casos exige guardar algo do payload original — só a chave não basta. Daí a coluna `hash_payload`: um SHA-256 do corpo canonicalizado da requisição, gravado junto do lançamento. Na chegada de uma chave repetida, compara-se o hash; igual devolve o recurso existente com `200`, diferente devolve `409`. Guardar o hash em vez do payload inteiro custa 64 bytes fixos e evita duplicar no banco um dado que já está nas colunas da própria tabela.
 
-### 5.3 `POST /api/lancamentos/{id}/estorno` (serviço de Lançamentos)
+### 5.3 `POST /api/lancamentos/{id}/estorno?comercianteId=` (serviço de Lançamentos)
 
-Cria o lançamento compensatório do lançamento `{id}` (§1.2). Também exige `Idempotency-Key`.
+Cria o lançamento compensatório do lançamento `{id}` (§1.2). Também exige `Idempotency-Key`. O `comercianteId` é query param **obrigatório** — é ele que vai ao `WHERE` da consulta e é conferido contra a claim do token.
 
 **Response `201 Created`** — mesmo formato do `POST /api/lancamentos`, com `tipo` invertido e `estornoDeId` preenchido.
 
@@ -343,9 +353,13 @@ Cria o lançamento compensatório do lançamento `{id}` (§1.2). Também exige `
 | Lançamento já estornado | `409 Conflict` |
 | É ele próprio um estorno | `422 Unprocessable Entity` |
 
-### 5.4 `GET /api/lancamentos` (serviço de Lançamentos)
+### 5.4 `GET /api/lancamentos` e `GET /api/lancamentos/{id}` (serviço de Lançamentos)
 
-Query params: `dataInicio`, `dataFim`, `pagina`, `tamanhoPagina` (default 50, máximo 200). Sem este endpoint o serviço é write-only — o comerciante não consegue conferir o que lançou, e o avaliador não consegue inspecionar o estado sem abrir o banco.
+Query params da listagem: `comercianteId` (**obrigatório**), `dataInicio`, `dataFim`, `pagina`, `tamanhoPagina` (default 50, máximo 200). Sem este endpoint o serviço é write-only — o comerciante não consegue conferir o que lançou, e o avaliador não consegue inspecionar o estado sem abrir o banco.
+
+A consulta por id é `GET /api/lancamentos/{id}?comercianteId=`, e o query param também é obrigatório aqui. Responde `200` com o mesmo corpo do `POST` (§5.2), `404` se o id não existe e `403` se o comerciante diverge da claim. É para essa URL — **com** o `comercianteId` — que aponta o header `Location` do `201`: um `Location` que devolve `400` ao ser seguido é um contrato quebrado, ainda que o recurso exista.
+
+Ordenação da listagem: `data_competencia DESC, id DESC`. A data sozinha não é única e produziria paginação instável — registros do mesmo dia poderiam aparecer duas vezes ou sumir entre páginas. O id como desempate torna a ordem total.
 
 ### 5.5 `GET /api/consolidado/{comercianteId}/{data}` (serviço de Consolidado)
 
@@ -398,7 +412,7 @@ O enunciado pede um **relatório** de saldo diário consolidado — uma consulta
 }
 ```
 
-Cada item de `dias` tem exatamente o mesmo formato do `GET` de data única (§5.5), menos os campos que já estão no envelope — mesmo recurso, mesma representação. `saldoDoPeriodo` é a soma dos saldos diários do intervalo; deliberadamente **não** se chama "acumulado", porque não incorpora saldo de abertura anterior a `de` — o sistema não modela saldo de abertura.
+Cada item de `dias` tem exatamente o mesmo formato do `GET` de data única (§5.5) — mesmo recurso, mesma representação, inclusive `comercianteId` e `moeda`, que se repetem em cada item. A repetição é redundante no envelope, mas mantém o item autocontido: um cliente que fatia a lista não precisa carregar o contexto junto. `saldoDoPeriodo` é a soma dos saldos diários do intervalo; deliberadamente **não** se chama "acumulado", porque não incorpora saldo de abertura anterior a `de` — o sistema não modela saldo de abertura.
 
 Período máximo de 90 dias (`400` acima disso) — limite explícito evita que uma consulta acidental de 10 anos vire um incidente de disponibilidade.
 
@@ -421,13 +435,15 @@ Falhar rápido e explicitamente é o que mantém a perda dentro do orçamento; o
 | Endpoint | Verifica | Uso |
 |---|---|---|
 | `/health/live` | processo respondendo | liveness probe — reinicia o container |
-| `/health/ready` | + banco e broker acessíveis | readiness probe — tira do load balancer |
+| `/health/ready` | + o **próprio** Postgres acessível | readiness probe — tira do load balancer |
 
 A distinção importa para o requisito âncora: o Consolidado ficar `not ready` **não pode** deixar o Lançamentos `not ready`. Os dois têm probes independentes porque não compartilham dependências.
 
+O readiness verifica **só o próprio Postgres**, deliberadamente — nem broker, nem Redis. Se o `/health/ready` do Lançamentos dependesse do RabbitMQ, uma queda do broker faria o serviço se declarar not-ready, o orquestrador o tiraria do balanceador e as escritas parariam: o health check derrubaria sozinho o RNF-01 que a outbox existe para garantir. Readiness não é diagnóstico de dependências, é a resposta a "devo continuar recebendo tráfego?" — e com o broker fora a resposta é **sim**.
+
 ### 5.9 Cache — chave e política
 
-**Chave Redis:** `consolidado:{comercianteId}:{moeda}:{data}`
+**Chave Redis:** `consolidado:{comercianteId}:{moeda}:{data}` — a chave efetiva no servidor é `cashflow:consolidado:{comercianteId}:{moeda}:{data}`, porque o `IDistributedCache` está configurado com `InstanceName = "cashflow:"` e prefixa tudo que grava. É o prefixo que o comando de invalidação manual do runbook precisa casar.
 
 **Mecanismo primário: invalidação ativa.** Após cada `UPSERT`, o consumer sobrescreve a chave com o valor novo (`SET`, não `DEL`). Usar `SET` em vez de `DEL` evita a race clássica: com `DEL`, um leitor que buscou no banco antes da escrita pode repopular o cache com o valor antigo *depois* da invalidação, e o dado errado fica preso até o TTL expirar.
 
@@ -451,9 +467,9 @@ Os 5 minutos são o compromisso: capturam quase todo o benefício de cache das c
 | `Lancamentos.Application` | `CriarLancamentoCommand` / `EstornarLancamentoCommand` + handlers — valida chave de idempotência, chama o Domain, grava lançamento + outbox na mesma transação via `ILancamentoRepository`/`IOutboxWriter` |
 | `Lancamentos.Domain` | Entidade `Lancamento` (com regra de estorno), VO `Dinheiro` (Valor + Moeda), enum `TipoLancamento`, interface `ILancamentoRepository`, interface `IOutboxWriter`, regras (`valor > 0`, `dataCompetencia <= hoje` no fuso do comerciante, estorno único) |
 | `Lancamentos.Infrastructure` | `LancamentoRepository` (Dapper), `OutboxRepository` (Dapper, com `SKIP LOCKED`), `OutboxPublisherBackgroundService` |
-| `Consolidado.Application` | `ObterSaldoDiarioQuery` / `ObterSaldoPeriodoQuery` + handlers — tenta Redis primeiro, faz fallback pro `ISaldoDiarioRepository` em cache miss |
-| `Consolidado.Domain` | Entidade `SaldoDiario`, interface `ISaldoDiarioRepository`, interface `IEventoProcessadoChecker` |
-| `Consolidado.Infrastructure` | `SaldoDiarioRepository` (Dapper + UPSERT acima), `LancamentoRealizadoConsumer` (dedupe + upsert na mesma transação), `RedisCacheService` |
+| `Consolidado.Application` | `ObterSaldoDiarioQuery` / `ObterSaldoPeriodoQuery` + handlers — chamam `ISaldoDiarioRepository` e **não sabem que existe cache**, que é o ponto: o cache-aside vive dentro do adaptador |
+| `Consolidado.Domain` | Entidade `SaldoDiario`, VO `Movimento`, interface `ISaldoDiarioRepository`. **Não** existe uma interface separada de dedupe: gravar o `eventId` e somar são uma operação atômica só, e separá-las em duas colaborações convidaria alguém a chamá-las fora da mesma transação |
+| `Consolidado.Infrastructure` | `SaldoDiarioRepository` (Dapper + UPSERT acima, com o cache-aside embutido sobre `IDistributedCache`), `LancamentoRealizadoConsumer` (dedupe + upsert na mesma transação) |
 
 A `Api` de cada serviço fica só com o endpoint mapeando request → handler e devolvendo o resultado, mais a verificação de autorização por comerciante (§5.1) — nenhuma regra de negócio ou acesso a dado na camada Api.
 

@@ -160,7 +160,7 @@ Prometheus/Grafana está em evoluções futuras). Os alertas seriam:
 
 | Alerta | Condição | Por quê |
 |---|---|---|
-| Lag de consistência acima do SLO | p95 de `cashflow.consolidado.lag_consistencia` > 5 s por 5 min | o read model está atrasando; provável backlog ou consumer degradado |
+| Lag de consistência acima do SLO | p95 de `cashflow.consolidado.lag_consistencia` > 5.000 (o instrumento é um histograma em **ms**) por 5 min | o read model está atrasando; provável backlog ou consumer degradado |
 | Backlog da outbox crescendo | `COUNT(*) WHERE processado_em IS NULL` > 1.000 e subindo | publisher ou broker com problema |
 | Mensagem na DLQ | qualquer mensagem em `consolidado.lancamento-realizado.dlq` | evento envenenado — exige o procedimento do [runbook](runbook.md) |
 | Error budget consumido | > 5% de não-2xx no `GET /api/consolidado` em janela de 1 h | o orçamento do mês está sendo gasto rápido demais |

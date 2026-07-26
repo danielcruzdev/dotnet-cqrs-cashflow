@@ -67,8 +67,10 @@ ORDER BY criado_em
 LIMIT 20;
 ```
 
-O motivo da falha não fica na tabela — está no log do serviço de Lançamentos,
-correlacionado pelo `event_id`.
+O motivo da falha não fica na tabela — está no log do serviço de Lançamentos.
+Falha de publicação é logada com o `event_id`; tipo de evento desconhecido é
+logado com o `id` da linha da outbox. As duas colunas estão no `SELECT` acima,
+então vale procurar pelos dois valores.
 
 O teto é de 10 tentativas (`OutboxRepository.MaximoTentativas`); acima dele o
 publisher para de tentar. Tentativa esgotada indica falha da mensagem em si (payload inválido, tipo de
@@ -103,9 +105,9 @@ ou alerta sobre profundidade da fila.
    mesmo código produz o mesmo resultado.
 4. **Republicar.** O caminho preferido é a própria outbox, que continua sendo a
    fonte da verdade — zerar `tentativas` da linha correspondente (§2) e deixar o
-   publisher reenviar. Republicar direto da DLQ pelo console também funciona
-   (*Move messages* com o plugin shovel), mas passa por cima do registro de
-   tentativas.
+   publisher reenviar. Republicar direto da DLQ pelo console exigiria habilitar
+   o plugin `rabbitmq_shovel` (a imagem `-management` não o traz), e ainda
+   passaria por cima do registro de tentativas — por isso a outbox é o caminho.
 5. **Purgar a DLQ** só depois de confirmar que o saldo convergiu (§4).
 
 **Não fazer:** purgar a DLQ antes de inspecionar. A mensagem é a única evidência
@@ -243,9 +245,11 @@ virar procedimento rotineiro em produção. Está em evoluções futuras.
 
 ## 6. Cache
 
-O Redis guarda `consolidado:{comercianteId}:{moeda}:{data}`, escrito **apenas
-pelo consumer** após cada `UPSERT`, com TTL de 5 s no dia corrente e 5 min em
-dias passados.
+O Redis guarda `cashflow:consolidado:{comercianteId}:{moeda}:{data}`, escrito
+**apenas pelo consumer** após cada `UPSERT`, com TTL de 5 s no dia corrente e
+5 min em dias passados. O prefixo `cashflow:` vem do `InstanceName` do
+`IDistributedCache` e não aparece na chave que o código monta — quem for
+inspecionar o Redis à mão precisa dele.
 
 - **Cache fora do ar não é incidente de disponibilidade.** Leitura e escrita
   degradam para o banco com log de `Warning`; por isso o Redis está fora do
@@ -253,7 +257,7 @@ dias passados.
 - **Invalidação manual** (após uma reconstrução, por exemplo):
 
   ```bash
-  docker exec -it cashflow-redis redis-cli --scan --pattern 'consolidado:<comerciante>:*' \
+  docker exec -it cashflow-redis redis-cli --scan --pattern 'cashflow:consolidado:<comerciante>:*' \
     | xargs -r docker exec -i cashflow-redis redis-cli DEL
   ```
 

@@ -24,8 +24,16 @@ model. No micro, dentro de cada serviço, casos de uso são
 **Transactional Outbox.** O `INSERT` em `lancamentos` e o `INSERT` em
 `outbox_messages` acontecem na **mesma transação local**. Um
 `BackgroundService` lê as pendentes com `FOR UPDATE SKIP LOCKED`, publica com
-publisher confirms e marca `processado_em`. Se a publicação falhar, o
-`ROLLBACK` devolve as linhas para pendentes.
+publisher confirms e marca `processado_em`.
+
+As duas falhas possíveis têm tratamentos diferentes, e a distinção é o que
+impede uma queda de broker de envenenar mensagens boas. Se o **ciclo** falha —
+tipicamente porque a conexão com o broker não abre — a exceção sobe, o
+`ROLLBACK` devolve o lote inteiro para pendentes e nenhuma tentativa é
+consumida. Se a **mensagem** falha, a linha apenas não recebe `processado_em`,
+`tentativas` é incrementado e o lote commita normalmente; ao atingir o teto de
+10, a linha sai do lote de trabalho e passa a exigir intervenção (§2 do
+[runbook](../runbook.md)).
 
 **Consumidor idempotente.** O `INSERT` em `eventos_processados`
 (`ON CONFLICT DO NOTHING`) e o `UPSERT` em `saldo_diario` acontecem na mesma

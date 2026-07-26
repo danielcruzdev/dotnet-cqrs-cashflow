@@ -16,8 +16,14 @@ detalhes de otimização.
 
 ## Decisão
 
-**Dapper + Npgsql**, com SQL escrito à mão, em ambos os serviços. Repository +
-Unit of Work sobre uma `NpgsqlDataSource` compartilhada.
+**Dapper + Npgsql**, com SQL escrito à mão, em ambos os serviços, sobre uma
+`NpgsqlDataSource` compartilhada.
+
+O Unit of Work existe **só no Lançamentos**, onde dois repositórios precisam
+compartilhar a mesma transação — é ele que sustenta a atomicidade entre
+lançamento e outbox. No Consolidado há um repositório fazendo uma operação
+atômica, e ele abre a própria transação; replicar a máquina do outro serviço ali
+seria simetria sem função.
 
 ## Alternativas consideradas
 

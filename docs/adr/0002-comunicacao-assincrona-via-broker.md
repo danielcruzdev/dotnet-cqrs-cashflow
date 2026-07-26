@@ -45,8 +45,15 @@ vira o piso do lag de consistência.
 
 **Positivas.** A queda do Consolidado é invisível para o Lançamentos: as
 mensagens acumulam na fila durável e são drenadas na volta. O contrato entre os
-serviços é o **evento**, versionado na própria routing key (`.v1`), e não o
-schema de uma tabela.
+serviços é o **evento**, carimbado com versão na própria routing key (`.v1`) e
+no envelope, e não o schema de uma tabela.
+
+Uma ressalva honesta sobre essa versão: o binding atual da fila do consumidor é
+`lancamento.#`, então hoje o segmento de versão **não** roteia — um
+`lancamento.realizado.v2` cairia na mesma fila do consumidor v1 e seria
+rejeitado para a DLQ. A versão está no lugar certo para servir de discriminador;
+transformá-la em roteamento de verdade é trocar o binding curinga por um binding
+por versão, e é o primeiro passo de qualquer evolução do contrato.
 
 **Negativas, assumidas.** Entrega *at-least-once*: o broker pode entregar a
 mesma mensagem mais de uma vez, e o publisher pode republicar se o commit da

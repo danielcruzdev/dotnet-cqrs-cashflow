@@ -65,7 +65,7 @@ flowchart LR
         CApi["Consolidado.Api<br/><i>ASP.NET Minimal API : 5002</i>"]
         CCon["Consumer LancamentoRealizado<br/><i>BackgroundService no mesmo processo</i>"]
         CDb[("consolidado_db<br/><i>PostgreSQL : 5433</i><br/>saldo_diario + eventos_processados")]
-        Cache[("Redis : 6379<br/><i>consolidado:{id}:{moeda}:{data}</i>")]
+        Cache[("Redis : 6379<br/><i>cashflow:consolidado:{id}:{moeda}:{data}</i>")]
     end
 
     Cliente -->|"POST /api/lancamentos<br/>HTTPS/JSON + JWT"| LApi
@@ -102,15 +102,23 @@ entre os dois.
 
 ```
 Api ──> Application ──> Domain
- │                        ▲
+ │           ▲            ▲
  └──> Infrastructure ─────┘
 ```
 
 `Domain` não referencia nenhum projeto — é o centro, e não tem sequer pacote
-NuGet. `Application` e `Infrastructure` dependem só dele. A `Api` referencia
-`Infrastructure` **exclusivamente no `Program.cs`**, onde as implementações
-concretas são registradas no contêiner de DI; nenhum outro arquivo da API
-conhece tipos de infraestrutura.
+NuGet. `Application` depende só dele. A `Api` referencia `Infrastructure`
+**exclusivamente no `Program.cs`**, onde as implementações concretas são
+registradas no contêiner de DI; nenhum outro arquivo da API conhece tipos de
+infraestrutura.
+
+A seta de `Infrastructure` para `Application` existe e é deliberada, mas vale
+num arquivo só: o `DependencyInjection.cs` de cada `Infrastructure` registra
+tanto os adaptadores quanto os handlers da `Application`, para que o
+`Program.cs` faça uma chamada em vez de duas. Nenhuma outra classe de
+infraestrutura conhece tipos da `Application` — as implementações de
+repositório dependem das interfaces do `Domain`, que é o que a regra existe
+para preservar.
 
 ---
 

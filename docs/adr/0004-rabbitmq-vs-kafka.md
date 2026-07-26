@@ -44,8 +44,12 @@ entrega de eventos acopla dois papéis com perfis de falha muito diferentes.
 
 ## Consequências
 
-**Positivas.** DLQ, TTL de mensagem e retry por configuração da fila, não por
-código. Console de administração em `http://localhost:15672` — que num desafio
+**Positivas.** DLQ por configuração da fila (`x-dead-letter-exchange` no
+`definitions.json`), sem uma linha de código. As demais políticas — teto de
+tentativas do publisher e backoff — ficaram em código, sobre a coluna
+`tentativas` da outbox: o broker até ofereceria `x-message-ttl` e
+`x-delivery-limit`, mas eles governam a **entrega**, e o que precisa de teto
+aqui é a **publicação**, que acontece antes de a mensagem existir no broker. Console de administração em `http://localhost:15672` — que num desafio
 vale bastante, porque o avaliador *vê* a mensagem passando. Operação leve o
 suficiente para caber num `docker compose`.
 
