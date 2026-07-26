@@ -120,6 +120,51 @@ services:
       retries: 10
     networks: [cashflow]
 
+  # ---------------------------------------------------------------------------
+  # Serviço de Lançamentos (write model) — API + publisher da outbox no mesmo
+  # processo. Não depende do RabbitMQ para subir: a conexão com o broker é
+  # aberta sob demanda, e é isso que sustenta o requisito âncora.
+  # ---------------------------------------------------------------------------
+  lancamentos-api:
+    build:
+      context: .
+      dockerfile: src/lancamentos-service/Dockerfile
+    container_name: cashflow-lancamentos-api
+    environment:
+      ConnectionStrings__LancamentosDb: "Host=lancamentos-db;Port=5432;Database=${LANCAMENTOS_DB_NAME:-lancamentos_db};Username=${LANCAMENTOS_DB_USER:-cashflow};Password=${LANCAMENTOS_DB_PASSWORD:-cashflow_dev}"
+      RabbitMq__Host: rabbitmq
+      Jwt__Chave: ${JWT_CHAVE:-chave-de-desenvolvimento-do-cashflow-trocar-em-producao}
+    ports:
+      - "${LANCAMENTOS_PORT:-5001}:8080"
+    depends_on:
+      lancamentos-db:
+        condition: service_healthy
+    networks: [cashflow]
+
+  # ---------------------------------------------------------------------------
+  # Serviço de Consolidado (read model) — API de consulta + consumer no mesmo
+  # processo. Derrubar este contêiner derruba os dois lados de uma vez, que é
+  # exatamente o cenário do teste de resiliência.
+  # ---------------------------------------------------------------------------
+  consolidado-api:
+    build:
+      context: .
+      dockerfile: src/consolidado-service/Dockerfile
+    container_name: cashflow-consolidado-api
+    environment:
+      ConnectionStrings__ConsolidadoDb: "Host=consolidado-db;Port=5432;Database=${CONSOLIDADO_DB_NAME:-consolidado_db};Username=${CONSOLIDADO_DB_USER:-cashflow};Password=${CONSOLIDADO_DB_PASSWORD:-cashflow_dev}"
+      ConnectionStrings__Redis: "redis:6379"
+      RabbitMq__Host: rabbitmq
+      Jwt__Chave: ${JWT_CHAVE:-chave-de-desenvolvimento-do-cashflow-trocar-em-producao}
+    ports:
+      - "${CONSOLIDADO_PORT:-5002}:8080"
+    depends_on:
+      consolidado-db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks: [cashflow]
+
 volumes:
   lancamentos-db-data:
   consolidado-db-data:
