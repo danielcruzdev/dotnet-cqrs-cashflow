@@ -1,0 +1,13 @@
+# Severidades de estilo aplicadas no build.
+#
+# EnforceCodeStyleInBuild ja esta ligado no Directory.Build.props, mas as regras
+# IDE nascem como "suggestion" e por isso nunca viram erro sob TreatWarningsAsErrors.
+# Estas tres pegam codigo morto - a categoria que passa despercebida em review
+# porque a linha parece significar alguma coisa.
+
+root = true
+
+[*.cs]
+dotnet_diagnostic.IDE0059.severity = warning   # valor atribuido e nunca usado
+dotnet_diagnostic.IDE0051.severity = warning   # membro privado nunca usado
+dotnet_diagnostic.IDE0052.severity = warning   # membro privado escrito e nunca lido
