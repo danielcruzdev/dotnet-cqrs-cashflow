@@ -75,6 +75,20 @@ infraestrutura, aplicam os mesmos arquivos de schema e a mesma topologia de
 broker que o compose usa e hospedam as duas APIs em processo. Só é preciso ter
 um Docker em execução.
 
+### O teste de resiliência
+
+`ResilienciaTests` é o teste que prova o requisito âncora em vez de argumentar
+sobre ele. Ele derruba o serviço de Consolidado — API e consumer caem juntos,
+porque o consumer roda no mesmo processo —, registra cinco lançamentos e exige
+`201` em todos, confere por SQL que a projeção não avançou, sobe o serviço de
+volta e espera o saldo convergir. A segunda variante faz o mesmo com o RabbitMQ
+fora do ar: os eventos ficam retidos na outbox e são publicados quando o broker
+volta, sem perda.
+
+```bash
+dotnet test src/tests-e2e/Cashflow.E2E.slnx --filter FullyQualifiedName~ResilienciaTests
+```
+
 > Instruções detalhadas de execução e configuração serão adicionadas conforme o desenvolvimento avança.
 
 ## Documentação

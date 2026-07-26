@@ -1,6 +1,8 @@
 using System.Globalization;
+using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
+using System.Net.Sockets;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Npgsql;
 using RabbitMQ.Client;
@@ -19,6 +21,10 @@ public sealed class AmbienteCashflow : IAsyncLifetime
     private const string Usuario = "cashflow";
     private const string Senha = "cashflow_dev";
     private const string ChaveJwt = "chave-de-teste-do-cashflow-com-tamanho-suficiente-para-hmacsha256";
+
+    // Porta fixa: o teste de resiliência para e sobe o broker, e uma porta
+    // dinâmica seria realocada na volta — o publisher perderia o endereço.
+    private static readonly int PortaBroker = PortaLivre();
 
     private readonly PostgreSqlContainer _bancoLancamentos = new PostgreSqlBuilder()
         .WithImage("postgres:17-alpine")
@@ -39,6 +45,7 @@ public sealed class AmbienteCashflow : IAsyncLifetime
         .WithImage("rabbitmq:4-management-alpine")
         .WithUsername(Usuario)
         .WithPassword(Senha)
+        .WithPortBinding(PortaBroker, 5672)
         .WithResourceMapping(File.ReadAllBytes(Arquivo("definitions.json")), "/etc/rabbitmq/definitions.json")
         .WithResourceMapping(File.ReadAllBytes(Arquivo("rabbitmq.conf")), "/etc/rabbitmq/rabbitmq.conf")
         .Build();
@@ -117,6 +124,23 @@ public sealed class AmbienteCashflow : IAsyncLifetime
         AutenticarAsync(_consolidado, comercianteId);
 
     /// <summary>
+    /// Derruba o serviço de Consolidado inteiro: a API e o consumer caem juntos,
+    /// porque o consumer roda no mesmo processo. O banco dele continua de pé de
+    /// propósito — é o que permite provar por SQL que a projeção não avançou.
+    /// </summary>
+    public ValueTask DerrubarConsolidadoAsync() => _consolidado.DisposeAsync();
+
+    public void SubirConsolidado()
+    {
+        _consolidado = new WebApplicationFactory<Consolidado.Api.JwtOptions>();
+        _consolidado.CreateClient().Dispose();
+    }
+
+    public Task DerrubarBrokerAsync() => _broker.StopAsync();
+
+    public Task SubirBrokerAsync() => _broker.StartAsync();
+
+    /// <summary>
     /// Repete a leitura até a condição valer ou o prazo acabar. A consistência é
     /// eventual: afirmar o saldo logo após o 201 seria testar uma corrida.
     /// </summary>
@@ -167,6 +191,9 @@ public sealed class AmbienteCashflow : IAsyncLifetime
             ["RabbitMq__Senha"] = Senha,
             // Varredura curta: o teste não deve esperar os 2s de produção.
             ["RabbitMq__IntervaloVarredura"] = "00:00:00.200",
+            // Teto de backoff curto: com o de produção, o publisher dormiria até
+            // 30s depois de uma queda do broker e o teste de resiliência esperaria junto.
+            ["RabbitMq__BackoffMaximo"] = "00:00:02",
         };
 
         foreach (var (chave, valor) in valores)
@@ -208,6 +235,14 @@ public sealed class AmbienteCashflow : IAsyncLifetime
     }
 
     private static string Arquivo(string nome) => Path.Combine(AppContext.BaseDirectory, "ambiente", nome);
+
+    private static int PortaLivre()
+    {
+        using var sonda = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
+        sonda.Bind(new IPEndPoint(IPAddress.Any, 0));
+
+        return ((IPEndPoint)sonda.LocalEndPoint!).Port;
+    }
 
     private sealed record TokenEmitido(string Token);
 }
